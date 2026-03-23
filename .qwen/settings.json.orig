@@ -6,6 +6,5 @@
       "Bash(findstr *)",
       "Bash(dart *)"
     ]
-  },
-  "$version": 3
+  }
 }

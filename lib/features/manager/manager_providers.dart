@@ -33,7 +33,7 @@ final showFavouritesOnlyProvider = StateProvider<bool>((ref) => false);
 final allDocumentsProvider = StreamProvider<List<Document>>((ref) {
   final dao = ref.watch(documentsDaoProvider);
   final showFavourites = ref.watch(showFavouritesOnlyProvider);
-  
+
   if (showFavourites) {
     return dao.watchFavourites();
   }
@@ -56,7 +56,7 @@ final filteredDocumentsProvider = Provider<AsyncValue<List<Document>>>((ref) {
         SortOption.dateAsc => a.updatedAt.compareTo(b.updatedAt),
         SortOption.nameAsc => a.title.compareTo(b.title),
         SortOption.nameDesc => b.title.compareTo(a.title),
-        SortOption.pagesDesc => b.pageCount.compareTo(a.pageCount),
+        SortOption.pagesDesc => b.imageCount.compareTo(a.imageCount),
       },
     );
 

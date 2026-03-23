@@ -28,6 +28,12 @@ class _CameraPageState extends ConsumerState<CameraPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _requestPermissionsAndScan());
   }
 
+  void _safePop() {
+    if (mounted && context.canPop()) {
+      context.pop();
+    }
+  }
+
   Future<void> _requestPermissionsAndScan() async {
     final permissionService = ref.read(permissionServiceProvider);
     
@@ -40,7 +46,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
         'Camera permission is required to scan documents',
         isError: true,
       );
-      context.pop();
+      _safePop();
       return;
     }
 
@@ -53,7 +59,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
         'Storage permission is required to save scanned documents',
         isError: true,
       );
-      context.pop();
+      _safePop();
       return;
     }
 
@@ -68,7 +74,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
 
       if (!mounted) return;
       if (result == null) {
-        context.pop();
+        _safePop();
         return;
       }
 
@@ -99,12 +105,12 @@ class _CameraPageState extends ConsumerState<CameraPage> {
     } on DocScanException catch (e) {
       if (mounted) {
         showSnackBar(context, 'Scan failed: ${e.message}', isError: true);
-        context.pop();
+        _safePop();
       }
     } catch (e) {
       if (mounted) {
         showSnackBar(context, 'Error: $e', isError: true);
-        context.pop();
+        _safePop();
       }
     }
   }
@@ -126,66 +132,23 @@ class _CameraPageState extends ConsumerState<CameraPage> {
 
     if (doc == null) {
       showSnackBar(context, 'Document not found', isError: true);
-      context.pop();
+      _safePop();
       return;
     }
 
-    // Check if existing document is PDF-based (single PDF file)
-    final pages = await ref
-        .read(pagesDaoProvider)
-        .getPagesForDocument(widget.existingDocId!);
-
-    final isExistingPdf = pages.length == 1 &&
-        pages.first.imagePath.toLowerCase().endsWith('.pdf');
-
-    if (isExistingPdf) {
-      // Cannot append to PDF-based documents - need to inform user
-      showSnackBar(
-        context,
-        'Cannot add pages to PDF-based documents. Create a new document instead.',
-        isError: true,
-      );
-      context.pop();
-      return;
-    }
-
-    // Convert PDF pages to individual images and append
-    if (!mounted) return;
-    
+    // Append images to existing document folder
     try {
-      final base = await getApplicationDocumentsDirectory();
-      final dir = Directory(p.join(base.path, 'pages'));
-      if (!await dir.exists()) await dir.create(recursive: true);
-
-      final dest = p.join(
-        dir.path,
-        '${widget.existingDocId}_${DateTime.now().microsecondsSinceEpoch}.pdf',
-      );
-
-      await File(cleanPath).copy(dest);
-
-      // Get current page count for proper indexing
-      final startIndex = pages.length;
-
-      // Insert the PDF as a page (will be rendered later if needed)
-      await ref.read(pagesDaoProvider).insertPage(
-        PagesCompanion(
-          documentId: Value(widget.existingDocId!),
-          imagePath: Value(dest),
-          pageIndex: Value(startIndex),
-        ),
-      );
-
-      await svc.refreshDocumentMeta(widget.existingDocId!);
+      final svc = ref.read(documentServiceProvider);
+      await svc.addImages(widget.existingDocId!, [cleanPath]);
 
       if (mounted) {
         showSnackBar(context, 'Added $pageCount page(s) to document');
-        context.pop();
+        _safePop();
       }
     } catch (e) {
       if (mounted) {
         showSnackBar(context, 'Failed to add pages: $e', isError: true);
-        context.pop();
+        _safePop();
       }
     }
   }
@@ -246,7 +209,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.close, color: Colors.white),
-          onPressed: () => context.pop(),
+          onPressed: _safePop,
         ),
       ),
       body: const Center(child: CircularProgressIndicator(color: Color(0xFF5C4BF5))),

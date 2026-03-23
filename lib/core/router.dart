@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:docscanner/features/camera/camera_page.dart';
 import 'package:docscanner/features/manager/document_manager_page.dart';
+import 'package:docscanner/features/manager/document_folder_page.dart';
 import 'package:docscanner/features/viewer/document_viewer_page.dart';
 import 'package:docscanner/features/settings/settings_page.dart';
 
@@ -16,9 +17,11 @@ class AppRoutes {
   static const String manager = '/';
   static const String camera = '/camera';
   static const String viewer = '/viewer/:docId';
+  static const String folder = '/folder/:docId';
   static const String settings = '/settings';
 
   static String viewerPath(int docId) => '/viewer/$docId';
+  static String folderPath(int docId) => '/folder/$docId';
 }
 
 // ---------------------------------------------------------------------------
@@ -42,6 +45,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final docId = int.tryParse(state.uri.queryParameters['docId'] ?? '');
           return MaterialPage(child: CameraPage(existingDocId: docId));
+        },
+      ),
+      GoRoute(
+        path: AppRoutes.folder,
+        pageBuilder: (context, state) {
+          final docId = int.parse(state.pathParameters['docId']!);
+          return MaterialPage(child: DocumentFolderPage(docId: docId));
         },
       ),
       GoRoute(

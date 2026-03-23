@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/utils.dart';
 import '../../../database/app_database.dart';
+import '../../../shared/services/document_service.dart';
 import '../../../shared/services/pdf_service.dart';
 
 class ExportSheet extends ConsumerStatefulWidget {
@@ -26,17 +27,18 @@ class _ExportSheetState extends ConsumerState<ExportSheet> {
 
   Future<void> _exportPdf() async {
     await _run(() async {
-      final pages = await ref
-          .read(pagesDaoProvider)
-          .getPagesForDocument(widget.docId);
-      final paths = pages.map((p) => p.imagePath).toList();
+      final docService = ref.read(documentServiceProvider);
+      final doc = await ref.read(documentsDaoProvider).getDocument(widget.docId);
+      if (doc == null) throw Exception('Document not found');
+      
+      final imagePaths = await docService.getDocumentImages(doc.folderPath);
 
       // Check if it's a PDF-based document
-      final isPdf = paths.length == 1 && paths.first.toLowerCase().endsWith('.pdf');
+      final isPdf = imagePaths.length == 1 && imagePaths.first.toLowerCase().endsWith('.pdf');
 
       if (isPdf) {
         // Share the existing PDF directly
-        final cleanPath = cleanFilePath(paths.first);
+        final cleanPath = cleanFilePath(imagePaths.first);
         await ref
             .read(pdfServiceProvider)
             .sharePdf(File(cleanPath), subject: widget.docTitle);
@@ -44,7 +46,7 @@ class _ExportSheetState extends ConsumerState<ExportSheet> {
         // Build PDF from images
         final pdfFile = await ref.read(pdfServiceProvider).buildPdf(
               title: widget.docTitle,
-              imagePaths: paths,
+              imagePaths: imagePaths,
             );
         await ref
             .read(pdfServiceProvider)
@@ -55,21 +57,22 @@ class _ExportSheetState extends ConsumerState<ExportSheet> {
 
   Future<void> _printPdf() async {
     await _run(() async {
-      final pages = await ref
-          .read(pagesDaoProvider)
-          .getPagesForDocument(widget.docId);
-      final paths = pages.map((p) => p.imagePath).toList();
+      final docService = ref.read(documentServiceProvider);
+      final doc = await ref.read(documentsDaoProvider).getDocument(widget.docId);
+      if (doc == null) throw Exception('Document not found');
+      
+      final imagePaths = await docService.getDocumentImages(doc.folderPath);
 
       // Check if it's a PDF-based document
-      final isPdf = paths.length == 1 && paths.first.toLowerCase().endsWith('.pdf');
+      final isPdf = imagePaths.length == 1 && imagePaths.first.toLowerCase().endsWith('.pdf');
 
       if (isPdf) {
-        final cleanPath = cleanFilePath(paths.first);
+        final cleanPath = cleanFilePath(imagePaths.first);
         await ref.read(pdfServiceProvider).printPdf(File(cleanPath));
       } else {
         final pdfFile = await ref.read(pdfServiceProvider).buildPdf(
               title: widget.docTitle,
-              imagePaths: paths,
+              imagePaths: imagePaths,
             );
         await ref.read(pdfServiceProvider).printPdf(pdfFile);
       }
@@ -78,13 +81,14 @@ class _ExportSheetState extends ConsumerState<ExportSheet> {
 
   Future<void> _shareImages() async {
     await _run(() async {
-      final pages = await ref
-          .read(pagesDaoProvider)
-          .getPagesForDocument(widget.docId);
-      final paths = pages.map((p) => p.imagePath).toList();
+      final docService = ref.read(documentServiceProvider);
+      final doc = await ref.read(documentsDaoProvider).getDocument(widget.docId);
+      if (doc == null) throw Exception('Document not found');
+      
+      final imagePaths = await docService.getDocumentImages(doc.folderPath);
 
       // Can't share PDF as images
-      final isPdf = paths.length == 1 && paths.first.toLowerCase().endsWith('.pdf');
+      final isPdf = imagePaths.length == 1 && imagePaths.first.toLowerCase().endsWith('.pdf');
 
       if (isPdf) {
         throw Exception('Cannot share PDF documents as images. Use "Export as PDF" instead.');
@@ -92,7 +96,7 @@ class _ExportSheetState extends ConsumerState<ExportSheet> {
 
       await ref
           .read(pdfServiceProvider)
-          .shareImages(paths, subject: widget.docTitle);
+          .shareImages(imagePaths, subject: widget.docTitle);
     });
   }
 

@@ -15,23 +15,33 @@ part 'app_database.g.dart';
 // ---------------------------------------------------------------------------
 // Database
 // ---------------------------------------------------------------------------
-@DriftDatabase(tables: [Documents, Pages], daos: [DocumentsDao, PagesDao])
+@DriftDatabase(tables: [Documents], daos: [DocumentsDao])
 class AppDatabase extends _$AppDatabase {
-  AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
+  AppDatabase._internal([QueryExecutor? executor])
+    : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) => m.createAll(),
     onUpgrade: (m, from, to) async {
-      if (from < 2) {
-        // Add ocrText column to existing installs
-        await m.addColumn(documents, documents.ocrText);
+      // Drop old tables and recreate for fresh start
+      for (final table in allTables) {
+        await m.drop(table);
       }
+      await m.createAll();
     },
   );
+}
+
+// Singleton instance
+AppDatabase? _instance;
+
+AppDatabase getDatabase() {
+  _instance ??= AppDatabase._internal();
+  return _instance!;
 }
 
 // ---------------------------------------------------------------------------
@@ -49,15 +59,13 @@ LazyDatabase _openConnection() {
 // Riverpod provider
 // ---------------------------------------------------------------------------
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
-  final db = AppDatabase();
-  ref.onDispose(db.close);
+  final db = getDatabase();
+  ref.onDispose(() {
+    // Don't close the singleton database
+  });
   return db;
 });
 
 final documentsDaoProvider = Provider<DocumentsDao>((ref) {
   return ref.watch(appDatabaseProvider).documentsDao;
-});
-
-final pagesDaoProvider = Provider<PagesDao>((ref) {
-  return ref.watch(appDatabaseProvider).pagesDao;
 });

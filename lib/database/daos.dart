@@ -1,4 +1,5 @@
 // lib/database/daos.dart
+import 'dart:io';
 import 'package:drift/drift.dart';
 import 'app_database.dart';
 import 'tables.dart';
@@ -6,9 +7,9 @@ import 'tables.dart';
 part 'daos.g.dart';
 
 // ---------------------------------------------------------------------------
-// Documents DAO
+// Documents DAO - lightweight metadata for folder-based storage
 // ---------------------------------------------------------------------------
-@DriftAccessor(tables: [Documents, Pages])
+@DriftAccessor(tables: [Documents])
 class DocumentsDao extends DatabaseAccessor<AppDatabase>
     with _$DocumentsDaoMixin {
   DocumentsDao(super.db);
@@ -37,7 +38,7 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
   Future<bool> updateDocument(DocumentsCompanion entry) =>
       update(documents).replace(entry);
 
-  // Delete document row (caller must delete page files + rows separately)
+  // Delete document row (caller must delete folder separately)
   Future<int> deleteDocument(int id) =>
       (delete(documents)..where((d) => d.id.equals(id))).go();
 
@@ -48,59 +49,36 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
     );
   }
 
-  // Update page count + cover + updatedAt after any page mutation
-  Future<void> refreshDocumentMeta(int docId) async {
-    final pageRows =
-        await (select(pages)
-              ..where((p) => p.documentId.equals(docId))
-              ..orderBy([(p) => OrderingTerm.asc(p.pageIndex)]))
-            .get();
+  // Update image count + cover + updatedAt after any image mutation
+  Future<void> refreshDocumentMeta(int docId, String folderPath) async {
+    final folder = Directory(folderPath);
+    if (!await folder.exists()) {
+      await (update(documents)..where((d) => d.id.equals(docId))).write(
+        DocumentsCompanion(
+          imageCount: Value(0),
+          coverImagePath: Value(null),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+      return;
+    }
+
+    final images = folder
+        .listSync()
+        .whereType<File>()
+        .where((f) =>
+            f.path.toLowerCase().endsWith('.jpg') ||
+            f.path.toLowerCase().endsWith('.jpeg') ||
+            f.path.toLowerCase().endsWith('.png'))
+        .toList()
+      ..sort((a, b) => a.path.compareTo(b.path));
+
     await (update(documents)..where((d) => d.id.equals(docId))).write(
       DocumentsCompanion(
-        pageCount: Value(pageRows.length),
-        coverPagePath: Value(
-          pageRows.isEmpty ? null : pageRows.first.imagePath,
-        ),
+        imageCount: Value(images.length),
+        coverImagePath: Value(images.isEmpty ? null : images.first.path),
         updatedAt: Value(DateTime.now()),
       ),
     );
   }
-}
-
-// ---------------------------------------------------------------------------
-// Pages DAO
-// ---------------------------------------------------------------------------
-@DriftAccessor(tables: [Pages])
-class PagesDao extends DatabaseAccessor<AppDatabase> with _$PagesDaoMixin {
-  PagesDao(super.db);
-
-  // Watch pages for a document ordered by pageIndex
-  Stream<List<Page>> watchPagesForDocument(int docId) =>
-      (select(pages)
-            ..where((p) => p.documentId.equals(docId))
-            ..orderBy([(p) => OrderingTerm.asc(p.pageIndex)]))
-          .watch();
-
-  Future<List<Page>> getPagesForDocument(int docId) =>
-      (select(pages)
-            ..where((p) => p.documentId.equals(docId))
-            ..orderBy([(p) => OrderingTerm.asc(p.pageIndex)]))
-          .get();
-
-  Future<int> insertPage(PagesCompanion entry) => into(pages).insert(entry);
-
-  Future<void> reorderPages(int docId, List<int> orderedIds) =>
-      transaction(() async {
-        for (var i = 0; i < orderedIds.length; i++) {
-          await (update(pages)..where((p) => p.id.equals(orderedIds[i]))).write(
-            PagesCompanion(pageIndex: Value(i)),
-          );
-        }
-      });
-
-  Future<int> deletePage(int pageId) =>
-      (delete(pages)..where((p) => p.id.equals(pageId))).go();
-
-  Future<int> deletePagesForDocument(int docId) =>
-      (delete(pages)..where((p) => p.documentId.equals(docId))).go();
 }

@@ -13,7 +13,9 @@ class DocScannerApp extends ConsumerWidget {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) router.pop();
+        if (!didPop && router.canPop()) {
+          router.pop();
+        }
       },
       child: MaterialApp.router(
         title: 'Doc Scanner',

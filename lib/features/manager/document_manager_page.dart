@@ -166,7 +166,7 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
                       padding: EdgeInsets.fromLTRB(16, 8, 16, docIndex == docs.length - 1 ? 100 : 0),
                       child: DocCard(
                         document: doc,
-                        onTap: () => context.push(AppRoutes.viewerPath(doc.id)),
+                        onTap: () => context.push(AppRoutes.folderPath(doc.id)),
                         onLongPress: () => _showDocOptions(context, ref, doc),
                       ),
                     );
@@ -181,8 +181,8 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
                         child: Stack(
                           fit: StackFit.expand,
                           children: [
-                            doc.coverPagePath != null
-                                ? Image.file(File(doc.coverPagePath!), fit: BoxFit.cover)
+                            doc.coverImagePath != null
+                                ? Image.file(File(doc.coverImagePath!), fit: BoxFit.cover)
                                 : Container(
                                     color: theme.colorScheme.primary.withOpacity(0.1),
                                     child: Icon(Icons.description_outlined, color: theme.colorScheme.primary, size: 32),
@@ -215,11 +215,11 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
                         final sizeStr = snapshot.hasData
                             ? formatBytes(snapshot.data!)
                             : '...';
-                        return Text('${doc.pageCount} pages · $sizeStr');
+                        return Text('${doc.imageCount} pages · $sizeStr');
                       },
                     ),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap: () => context.push(AppRoutes.viewerPath(doc.id)),
+                    onTap: () => context.push(AppRoutes.folderPath(doc.id)),
                     onLongPress: () => _showDocOptions(context, ref, doc),
                   );
                 },
@@ -234,48 +234,52 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
         padding: const EdgeInsets.only(bottom: 16, left: 16, right: 16),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
           children: [
             // Gallery button - more prominent
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    theme.colorScheme.surfaceContainerHigh,
-                    theme.colorScheme.surfaceContainerHighest,
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(28),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+            Flexible(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      theme.colorScheme.surfaceContainerHigh,
+                      theme.colorScheme.surfaceContainerHighest,
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
-                ],
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
                   borderRadius: BorderRadius.circular(28),
-                  onTap: () => _pickFromGallery(context, ref),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.photo_library_outlined, size: 20),
-                        SizedBox(width: 8),
-                        Text(
-                          'Gallery',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(28),
+                    onTap: () => _pickFromGallery(context, ref),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.photo_library_outlined, size: 20),
+                          SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              'Gallery',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -352,13 +356,23 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
       title: finalTitle,
       imagePaths: paths,
     );
-    if (context.mounted) context.push(AppRoutes.viewerPath(docId));
+    if (context.mounted) context.push(AppRoutes.folderPath(docId));
   }
 
   Future<int> _getDocSize(Document doc) async {
-    if (doc.coverPagePath == null) return 0;
-    return await fileSize(doc.coverPagePath!);
+    if (doc.coverImagePath == null) return 0;
+    return await fileSize(doc.coverImagePath!);
   }
+
+  Future<Directory> _documentsDir() async {
+    final base = await getApplicationDocumentsDirectory();
+    final dir = Directory(p.join(base.path, 'documents'));
+    if (!await dir.exists()) await dir.create(recursive: true);
+    return dir;
+  }
+
+  String _sanitizeFileName(String name) =>
+      name.replaceAll(RegExp(r'[^\w\s-]'), '').trim().replaceAll(' ', '_');
 
   Widget _buildRecentSection(BuildContext context, WidgetRef ref, List<Document> recentDocs) {
     final theme = Theme.of(context);
@@ -400,7 +414,8 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
               width: 160,
               child: DocCard(
                 document: recentDocs[i],
-                onTap: () => context.push(AppRoutes.viewerPath(recentDocs[i].id)),
+                heroTag: 'recent_${recentDocs[i].id}',
+                onTap: () => context.push(AppRoutes.folderPath(recentDocs[i].id)),
                 onLongPress: () => _showDocOptions(context, ref, recentDocs[i]),
               ),
             ),
@@ -541,22 +556,20 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
     Document doc,
   ) async {
     try {
-      final pages = await ref
-          .read(pagesDaoProvider)
-          .getPagesForDocument(doc.id);
-      final paths = pages.map((p) => p.imagePath).toList();
+      final docService = ref.read(documentServiceProvider);
+      final imagePaths = await docService.getDocumentImages(doc.folderPath);
 
       // Check if it's a PDF-based document
-      final isPdf = paths.length == 1 && paths.first.toLowerCase().endsWith('.pdf');
+      final isPdf = imagePaths.length == 1 && imagePaths.first.toLowerCase().endsWith('.pdf');
 
       if (isPdf) {
         // Share the PDF file directly
         final pdfService = ref.read(pdfServiceProvider);
-        await pdfService.sharePdf(File(paths.first), subject: doc.title);
+        await pdfService.sharePdf(File(imagePaths.first), subject: doc.title);
       } else {
         // Share as images
         final pdfService = ref.read(pdfServiceProvider);
-        await pdfService.shareImages(paths, subject: doc.title);
+        await pdfService.shareImages(imagePaths, subject: doc.title);
       }
     } catch (e) {
       if (context.mounted) {
@@ -571,24 +584,22 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
     Document doc,
   ) async {
     try {
-      final pages = await ref
-          .read(pagesDaoProvider)
-          .getPagesForDocument(doc.id);
-      final paths = pages.map((p) => p.imagePath).toList();
+      final docService = ref.read(documentServiceProvider);
+      final imagePaths = await docService.getDocumentImages(doc.folderPath);
 
       // Check if it's already a PDF-based document
-      final isPdf = paths.length == 1 && paths.first.toLowerCase().endsWith('.pdf');
+      final isPdf = imagePaths.length == 1 && imagePaths.first.toLowerCase().endsWith('.pdf');
 
       if (isPdf) {
         // Share the existing PDF
         final pdfService = ref.read(pdfServiceProvider);
-        await pdfService.sharePdf(File(paths.first), subject: doc.title);
+        await pdfService.sharePdf(File(imagePaths.first), subject: doc.title);
       } else {
         // Build PDF from images
         final pdfService = ref.read(pdfServiceProvider);
         final pdfFile = await pdfService.buildPdf(
           title: doc.title,
-          imagePaths: paths,
+          imagePaths: imagePaths,
         );
         await pdfService.sharePdf(pdfFile, subject: doc.title);
       }
@@ -605,26 +616,23 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
     Document doc,
   ) async {
     try {
-      final pages = await ref
-          .read(pagesDaoProvider)
-          .getPagesForDocument(doc.id);
-      final paths = pages.map((p) => p.imagePath).toList();
+      final docService = ref.read(documentServiceProvider);
+      final imagePaths = await docService.getDocumentImages(doc.folderPath);
 
       // Check if it's a PDF-based document
-      final isPdf = paths.length == 1 && paths.first.toLowerCase().endsWith('.pdf');
+      final isPdf = imagePaths.length == 1 && imagePaths.first.toLowerCase().endsWith('.pdf');
 
       if (isPdf) {
         // Duplicate PDF document
-        final cleanPath = cleanFilePath(paths.first);
+        final cleanPath = cleanFilePath(imagePaths.first);
 
-        final base = await getApplicationDocumentsDirectory();
-        final dir = Directory(p.join(base.path, 'pages'));
-        if (!await dir.exists()) await dir.create(recursive: true);
+        final docsDir = await _documentsDir();
+        final folderName = '${_sanitizeFileName(doc.title)}_dup_${DateTime.now().microsecondsSinceEpoch}';
+        final folderPath = p.join(docsDir.path, folderName);
+        final folder = Directory(folderPath);
+        await folder.create(recursive: true);
 
-        final dest = p.join(
-          dir.path,
-          '${doc.id}_dup_${DateTime.now().microsecondsSinceEpoch}.pdf',
-        );
+        final dest = p.join(folderPath, '${_sanitizeFileName(doc.title)}.pdf');
         await File(cleanPath).copy(dest);
 
         final newDocId = await ref.read(documentServiceProvider).createDocumentFromPdf(
@@ -635,18 +643,18 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
 
         if (context.mounted) {
           showSnackBar(context, 'Document duplicated');
-          context.push(AppRoutes.viewerPath(newDocId));
+          context.push(AppRoutes.folderPath(newDocId));
         }
       } else {
         // Duplicate image-based document
         final newDocId = await ref.read(documentServiceProvider).createDocument(
           title: '${doc.title} (Copy)',
-          imagePaths: paths,
+          imagePaths: imagePaths,
         );
 
         if (context.mounted) {
           showSnackBar(context, 'Document duplicated');
-          context.push(AppRoutes.viewerPath(newDocId));
+          context.push(AppRoutes.folderPath(newDocId));
         }
       }
     } catch (e) {

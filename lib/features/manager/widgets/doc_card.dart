@@ -14,11 +14,13 @@ class DocCard extends StatelessWidget {
     required this.document,
     required this.onTap,
     this.onLongPress,
+    this.heroTag,
   });
 
   final Document document;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
+  final String? heroTag;
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +31,7 @@ class DocCard extends StatelessWidget {
       onTap: onTap,
       onLongPress: onLongPress,
       child: Hero(
-        tag: 'doc_${document.id}',
+        tag: heroTag ?? 'doc_${document.id}',
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
@@ -53,168 +55,176 @@ class DocCard extends StatelessWidget {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Cover image — takes remaining space
-                Expanded(
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      // Image or initials placeholder
-                      document.coverPagePath != null
-                          ? (document.coverPagePath!.toLowerCase().endsWith('.pdf')
-                              ? _PdfThumbnail(path: document.coverPagePath!)
-                              : Image.file(
-                                  File(document.coverPagePath!),
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (ctx, err, _) => Container(
-                                    color: cs.surfaceContainerHigh,
-                                    child: Center(
-                                      child: Icon(Icons.broken_image_outlined, color: cs.onSurfaceVariant),
-                                    ),
-                                  ),
-                                ))
-                          : Container(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [
-                                    cs.primary.withOpacity(0.18),
-                                    cs.primary.withOpacity(0.06),
-                                  ],
-                                ),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  initials(document.title),
-                                  style: TextStyle(
-                                    fontSize: 40,
-                                    fontWeight: FontWeight.w800,
-                                    color: cs.primary.withOpacity(0.35),
-                                  ),
-                                ),
-                              ),
-                            ),
-
-                      // Bottom gradient overlay
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        height: 60,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.transparent,
-                                Colors.black.withOpacity(0.45),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      // Page count badge
-                      Positioned(
-                        top: 10,
-                        right: 10,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Favourite indicator
-                            if (document.isFavourite)
-                              Container(
-                                margin: const EdgeInsets.only(right: 6),
-                                padding: const EdgeInsets.all(4),
+            child: SizedBox(
+              height: 280,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Cover image — takes remaining space
+                  Expanded(
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        // Image or initials placeholder
+                        document.coverImagePath != null
+                            ? (document.coverImagePath!.toLowerCase().endsWith(
+                                    '.pdf',
+                                  )
+                                  ? _PdfThumbnail(path: document.coverImagePath!)
+                                  : Image.file(
+                                      File(document.coverImagePath!),
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (ctx, err, _) => Container(
+                                        color: cs.surfaceContainerHigh,
+                                        child: Center(
+                                          child: Icon(
+                                            Icons.broken_image_outlined,
+                                            color: cs.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ),
+                                    ))
+                            : Container(
                                 decoration: BoxDecoration(
-                                  color: Colors.red.withOpacity(0.8),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.favorite_rounded,
-                                  size: 10,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.55),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(
-                                    Icons.layers_rounded,
-                                    size: 11,
-                                    color: Colors.white70,
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      cs.primary.withOpacity(0.18),
+                                      cs.primary.withOpacity(0.06),
+                                    ],
                                   ),
-                                  const SizedBox(width: 3),
-                                  Text(
-                                    '${document.pageCount}',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    initials(document.title),
+                                    style: TextStyle(
+                                      fontSize: 40,
+                                      fontWeight: FontWeight.w800,
+                                      color: cs.primary.withOpacity(0.35),
                                     ),
                                   ),
+                                ),
+                              ),
+
+                        // Bottom gradient overlay
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          height: 60,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.transparent,
+                                  Colors.black.withOpacity(0.45),
                                 ],
                               ),
                             ),
-                          ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
 
-                // Footer — sizes precisely to content
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        document.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: tt.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          height: 1.2,
-                          letterSpacing: 0.1,
+                        // Page count badge
+                        Positioned(
+                          top: 10,
+                          right: 10,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Favourite indicator
+                              if (document.isFavourite)
+                                Container(
+                                  margin: const EdgeInsets.only(right: 6),
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.withOpacity(0.8),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.favorite_rounded,
+                                    size: 10,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.55),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.layers_rounded,
+                                      size: 11,
+                                      color: Colors.white70,
+                                    ),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      '${document.imageCount}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      // Document metadata: pages and size
-                      FutureBuilder<int>(
-                        future: _getDocumentSize(document),
-                        builder: (context, snapshot) {
-                          final sizeStr = snapshot.hasData 
-                              ? formatBytes(snapshot.data!)
-                              : '...';
-                          return Text(
-                            '${document.pageCount} pages · $sizeStr',
-                            style: tt.labelSmall?.copyWith(
-                              color: cs.onSurface.withOpacity(0.6),
-                              fontWeight: FontWeight.w500,
-                              letterSpacing: 0.1,
-                            ),
-                          );
-                        },
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
+
+                  // Footer — sizes precisely to content
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          document.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: tt.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            height: 1.2,
+                            letterSpacing: 0.1,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        // Document metadata: pages and size
+                        FutureBuilder<int>(
+                          future: _getDocumentSize(document),
+                          builder: (context, snapshot) {
+                            final sizeStr = snapshot.hasData
+                                ? formatBytes(snapshot.data!)
+                                : '...';
+                            return Text(
+                              '${document.imageCount} pages · $sizeStr',
+                              style: tt.labelSmall?.copyWith(
+                                color: cs.onSurface.withOpacity(0.6),
+                                fontWeight: FontWeight.w500,
+                                letterSpacing: 0.1,
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -223,8 +233,8 @@ class DocCard extends StatelessWidget {
   }
 
   Future<int> _getDocumentSize(Document doc) async {
-    if (doc.coverPagePath == null) return 0;
-    return await fileSize(doc.coverPagePath!);
+    if (doc.coverImagePath == null) return 0;
+    return await fileSize(doc.coverImagePath!);
   }
 }
 
@@ -243,9 +253,7 @@ class _PdfThumbnail extends StatelessWidget {
         if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
           return Container(
             color: Theme.of(context).colorScheme.surfaceContainerHigh,
-            child: const Center(
-              child: Icon(Icons.picture_as_pdf_outlined),
-            ),
+            child: const Center(child: Icon(Icons.picture_as_pdf_outlined)),
           );
         }
         return Image.memory(
@@ -253,9 +261,7 @@ class _PdfThumbnail extends StatelessWidget {
           fit: BoxFit.cover,
           errorBuilder: (ctx, err, _) => Container(
             color: Theme.of(context).colorScheme.surfaceContainerHigh,
-            child: const Center(
-              child: Icon(Icons.broken_image_outlined),
-            ),
+            child: const Center(child: Icon(Icons.broken_image_outlined)),
           ),
         );
       },
@@ -266,11 +272,12 @@ class _PdfThumbnail extends StatelessWidget {
     try {
       final cacheDir = await getTemporaryDirectory();
       final thumbDir = Directory(p.join(cacheDir.path, 'pdf_thumbnails'));
-      
+
       // Clean up old thumbnails (older than 7 days)
       await _cleanupOldThumbnails(thumbDir);
-      
-      final safeName = '${path.hashCode}_${p.basenameWithoutExtension(path)}.png';
+
+      final safeName =
+          '${path.hashCode}_${p.basenameWithoutExtension(path)}.png';
       final cacheFile = File(p.join(thumbDir.path, safeName));
 
       if (await cacheFile.exists()) {
@@ -278,7 +285,11 @@ class _PdfThumbnail extends StatelessWidget {
       }
 
       final bytes = await File(path).readAsBytes();
-      final rasters = await Printing.raster(bytes, pages: [0], dpi: 72).toList();
+      final rasters = await Printing.raster(
+        bytes,
+        pages: [0],
+        dpi: 72,
+      ).toList();
       if (rasters.isNotEmpty) {
         final pngBytes = await rasters.first.toPng();
 
@@ -298,7 +309,7 @@ class _PdfThumbnail extends StatelessWidget {
   Future<void> _cleanupOldThumbnails(Directory thumbDir) async {
     try {
       if (!await thumbDir.exists()) return;
-      
+
       final now = DateTime.now();
       await for (final entity in thumbDir.list()) {
         if (entity is File) {
@@ -314,4 +325,3 @@ class _PdfThumbnail extends StatelessWidget {
     }
   }
 }
-

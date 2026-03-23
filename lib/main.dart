@@ -6,10 +6,10 @@ import 'package:docscanner/app.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Clean up temp directory on app start
   await _cleanupTempDirectory();
-  
+
   runApp(const ProviderScope(child: DocScannerApp()));
 }
 
@@ -27,5 +27,6 @@ Future<void> _cleanupTempDirectory() async {
     }
   } catch (e) {
     // Ignore cleanup errors
+    debugPrint('Cleanup error: $e');
   }
 }

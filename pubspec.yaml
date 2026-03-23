@@ -40,6 +40,7 @@ dependencies:
   sqlite3_flutter_libs: ^0.5.0
   path_provider: ^2.1.4
   path: ^1.9.0
+  uuid: ^4.5.1
 
   # Permissions & sharing
   permission_handler: ^12.0.1

@@ -3,23 +3,22 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
-import '../../../database/app_database.dart' as db;
 
 class PageItem extends StatelessWidget {
   const PageItem({
     super.key,
-    required this.page,
+    required this.imagePath,
     required this.index,
     required this.onDelete,
   });
 
-  final db.Page page;
+  final String imagePath;
   final int index;
   final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
-    final isPdf = page.imagePath.toLowerCase().endsWith('.pdf');
+    final isPdf = imagePath.toLowerCase().endsWith('.pdf');
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
@@ -40,7 +39,7 @@ class PageItem extends StatelessWidget {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: isPdf ? _PdfPagePreview(path: page.imagePath) : _ImagePagePreview(path: page.imagePath),
+                child: isPdf ? _PdfPagePreview(path: imagePath) : _ImagePagePreview(path: imagePath),
               ),
             ),
           ),
