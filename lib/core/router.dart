@@ -1,11 +1,10 @@
 // lib/core/router.dart
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import '../features/manager/document_manager_page.dart';
-import '../features/camera/camera_page.dart';
-import '../features/viewer/document_viewer_page.dart';
+import 'package:go_router/go_router.dart';
+import 'package:docscanner/features/camera/camera_page.dart';
+import 'package:docscanner/features/manager/document_manager_page.dart';
+import 'package:docscanner/features/viewer/document_viewer_page.dart';
 
 // ---------------------------------------------------------------------------
 // Route paths

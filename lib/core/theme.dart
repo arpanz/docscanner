@@ -47,7 +47,7 @@ class AppTheme {
           color: scheme.onSurface,
         ),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
@@ -70,6 +70,7 @@ class AppTheme {
         ),
       ),
       bottomSheetTheme: BottomSheetThemeData(
+        showDragHandle: true,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),

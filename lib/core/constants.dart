@@ -24,5 +24,5 @@ class AppConstants {
 
   // Animation durations
   static const Duration fastAnim = Duration(milliseconds: 200);
-  static const Duration normalAnim = Duration(milliseconds: 350);
+  static const Duration normalAnim = Duration(milliseconds: 300);
 }
