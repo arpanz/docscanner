@@ -41,6 +41,50 @@ class DocumentService {
   }
 
   // ---------------------------------------------------------------------------
+  // Create a new document from a scanned PDF
+  // ---------------------------------------------------------------------------
+  Future<int> createDocumentFromPdf({
+    required String title,
+    required String pdfPath,
+    required int pageCount,
+  }) async {
+    final docId = await _docsDao.insertDocument(
+      DocumentsCompanion(title: Value(title)),
+    );
+    try {
+      final base = await getApplicationDocumentsDirectory();
+      final dir = Directory(p.join(base.path, 'pages'));
+      if (!await dir.exists()) await dir.create(recursive: true);
+
+      final dest = p.join(
+        dir.path,
+        '${docId}_${DateTime.now().microsecondsSinceEpoch}.pdf',
+      );
+
+      // Clean the path in case `file://` is still prefixed
+      final cleanPath = pdfPath.startsWith('file://')
+          ? Uri.parse(pdfPath).toFilePath()
+          : pdfPath;
+      
+      await File(cleanPath).copy(dest);
+
+      await _pagesDao.insertPage(
+        PagesCompanion(
+          documentId: Value(docId),
+          imagePath: Value(dest), // store PDF path
+          pageIndex: const Value(0),
+        ),
+      );
+
+      await _docsDao.refreshDocumentMeta(docId);
+      return docId;
+    } catch (e) {
+      await _docsDao.deleteDocument(docId);
+      rethrow;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Append pages to an existing document
   // ---------------------------------------------------------------------------
   Future<void> appendPages(int docId, List<String> imagePaths) async {
@@ -102,9 +146,13 @@ class DocumentService {
   }) async {
     final dir = await _pagesDir();
     var successCount = 0;
+    Object? lastError;
 
     for (var i = 0; i < imagePaths.length; i++) {
-      final src = imagePaths[i];
+      final rawSrc = imagePaths[i];
+      // flutter_doc_scanner 0.0.17 returns paths like 'file:///storage/emulated/0/...'.
+      // File() needs an absolute filesystem path.
+      final src = rawSrc.startsWith('file://') ? Uri.parse(rawSrc).toFilePath() : rawSrc;
       final dest = p.join(
         dir.path,
         '${docId}_${startIndex + i}_${DateTime.now().microsecondsSinceEpoch}.jpg',
@@ -122,10 +170,14 @@ class DocumentService {
       } catch (e) {
         // Skip this page — don't crash the whole document
         debugPrint('Failed to save page $i: $e');
+        lastError = e;
       }
     }
 
     if (successCount == 0) {
+      if (lastError != null) {
+        throw Exception('All images failed to process. Reason: $lastError');
+      }
       throw Exception('No pages could be saved — all images failed to process');
     }
   }

@@ -24,18 +24,17 @@ class _CameraPageState extends ConsumerState<CameraPage> {
 
   Future<void> _scan() async {
     try {
-      final ImageScanResult? result = await FlutterDocScanner()
-          .getScannedDocumentAsImages(page: 10); // max pages allowed
+      final PdfScanResult? result = await FlutterDocScanner()
+          .getScannedDocumentAsPdf(page: 10);
 
       if (!mounted) return;
-
-      // User cancelled
-      if (result == null || result.images.isEmpty) {
+      if (result == null) {
         context.pop();
         return;
       }
 
-      final paths = result.images; // List<String> — real file paths, not content URIs
+      final pdfPath = result.pdfUri;
+      debugPrint('PDF path: $pdfPath');
 
       final title = await _promptTitle();
       if (!mounted) return;
@@ -46,16 +45,20 @@ class _CameraPageState extends ConsumerState<CameraPage> {
 
       final svc = ref.read(documentServiceProvider);
 
+      // If existingDocId is provided but it's a PDF architecture, we cannot 
+      // straightforwardly append pages. Ideally 'add pages' is hidden for PDFs.
       if (widget.existingDocId != null) {
-        await svc.appendPages(widget.existingDocId!, paths);
-        if (mounted) context.pop();
-      } else {
-        final docId = await svc.createDocument(
-          title: title,
-          imagePaths: paths,
-        );
-        if (mounted) context.go('/viewer/$docId');
+        context.pop(); // Not supported for PDFs in this quick fix
+        return;
       }
+
+      final docId = await svc.createDocumentFromPdf(
+        title: title,
+        pdfPath: pdfPath,
+        pageCount: result.pageCount,
+      );
+      if (mounted) context.go('/viewer/$docId');
+
     } on DocScanException catch (e) {
       if (mounted) {
         showSnackBar(context, 'Scan failed: ${e.message}', isError: true);
@@ -63,7 +66,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Scan failed: $e', isError: true);
+        showSnackBar(context, 'Error: $e', isError: true);
         context.pop();
       }
     }

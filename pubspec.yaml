@@ -24,7 +24,7 @@ dependencies:
   go_router: ^17.1.0
 
   # Camera & scanning
-  flutter_doc_scanner: ^0.0.17
+  flutter_doc_scanner: ^0.0.18
 
   # Image processing
   image: ^4.2.0

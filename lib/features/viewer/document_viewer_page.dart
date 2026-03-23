@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:printing/printing.dart';
 
 import '../../core/router.dart';
 import '../../core/utils.dart';
@@ -63,19 +64,22 @@ class _DocumentViewerPageState extends ConsumerState<DocumentViewerPage> {
               color: Theme.of(context).colorScheme.onSurface,
             ),
             actions: [
-              // Toggle reorder mode
-              IconButton(
-                icon: Icon(_reorderMode ? Icons.check : Icons.reorder),
-                tooltip: _reorderMode ? 'Done reordering' : 'Reorder pages',
-                onPressed: () => setState(() => _reorderMode = !_reorderMode),
-              ),
-              // Add more pages
-              IconButton(
-                icon: const Icon(Icons.add_a_photo_outlined),
-                tooltip: 'Add pages',
-                onPressed: () =>
-                    context.push('${AppRoutes.camera}?docId=${widget.docId}'),
-              ),
+              // If it's a PDF, we disable these actions because we only store one PDF file.
+              if (pagesAsync.value != null && !(pagesAsync.value!.length == 1 && pagesAsync.value!.first.imagePath.toLowerCase().endsWith('.pdf'))) ...[
+                // Toggle reorder mode
+                IconButton(
+                  icon: Icon(_reorderMode ? Icons.check : Icons.reorder),
+                  tooltip: _reorderMode ? 'Done reordering' : 'Reorder pages',
+                  onPressed: () => setState(() => _reorderMode = !_reorderMode),
+                ),
+                // Add more pages
+                IconButton(
+                  icon: const Icon(Icons.add_a_photo_outlined),
+                  tooltip: 'Add pages',
+                  onPressed: () =>
+                      context.push('${AppRoutes.camera}?docId=${widget.docId}'),
+                ),
+              ],
               // Export
               IconButton(
                 icon: const Icon(Icons.ios_share),
@@ -107,6 +111,17 @@ class _DocumentViewerPageState extends ConsumerState<DocumentViewerPage> {
                   icon: Icons.image_not_supported_outlined,
                   title: 'No pages',
                   subtitle: 'Add pages using the camera button above.',
+                );
+              }
+
+              final isPdf = pages.length == 1 && pages.first.imagePath.toLowerCase().endsWith('.pdf');
+              if (isPdf) {
+                return PdfPreview(
+                  build: (format) async => File(pages.first.imagePath).readAsBytes(),
+                  useActions: false,
+                  canChangeOrientation: false,
+                  canChangePageFormat: false,
+                  canDebug: false,
                 );
               }
 
