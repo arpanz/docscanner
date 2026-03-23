@@ -18,7 +18,7 @@ class CropEnhanceSheet extends ConsumerStatefulWidget {
 }
 
 class _CropEnhanceSheetState extends ConsumerState<CropEnhanceSheet> {
-  _FilterMode _filter = _FilterMode.original;
+  FilterMode _filter = FilterMode.original;
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +51,7 @@ class _CropEnhanceSheetState extends ConsumerState<CropEnhanceSheet> {
                 ),
                 FilledButton(
                   onPressed: () async {
-                    if (_filter == _FilterMode.original) {
+                    if (_filter == FilterMode.original) {
                       Navigator.pop(context, widget.imagePath);
                       return;
                     }
@@ -64,8 +64,8 @@ class _CropEnhanceSheetState extends ConsumerState<CropEnhanceSheet> {
                       );
 
                       final processedPath = await compute(
-                        _applyFilter,
-                        _FilterArgs(
+                        applyFilter,
+                        FilterArgs(
                           inputPath: widget.imagePath,
                           outputPath: outPath,
                           filterName: _filter.name,
@@ -105,7 +105,7 @@ class _CropEnhanceSheetState extends ConsumerState<CropEnhanceSheet> {
             child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              children: _FilterMode.values.map((mode) {
+              children: FilterMode.values.map((mode) {
                 final selected = _filter == mode;
                 return Padding(
                   padding: const EdgeInsets.only(right: 12),
@@ -162,7 +162,7 @@ class _CropEnhanceSheetState extends ConsumerState<CropEnhanceSheet> {
 class _FilteredImage extends StatelessWidget {
   const _FilteredImage({required this.path, required this.filter});
   final String path;
-  final _FilterMode filter;
+  final FilterMode filter;
 
   @override
   Widget build(BuildContext context) {
@@ -176,7 +176,7 @@ class _FilteredImage extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // Filter modes
 // ---------------------------------------------------------------------------
-enum _FilterMode {
+enum FilterMode {
   original,
   grayscale,
   enhance,
@@ -267,8 +267,8 @@ enum _FilterMode {
   };
 }
 
-class _FilterArgs {
-  const _FilterArgs({
+class FilterArgs {
+  const FilterArgs({
     required this.inputPath,
     required this.outputPath,
     required this.filterName,
@@ -279,26 +279,26 @@ class _FilterArgs {
   final String filterName;
 }
 
-String _applyFilter(_FilterArgs args) {
+String applyFilter(FilterArgs args) {
   final bytes = File(args.inputPath).readAsBytesSync();
   final image = img.decodeImage(bytes);
   if (image == null) {
     throw Exception('Failed to decode image');
   }
 
-  final mode = _FilterMode.values.firstWhere(
+  final mode = FilterMode.values.firstWhere(
     (m) => m.name == args.filterName,
-    orElse: () => _FilterMode.original,
+    orElse: () => FilterMode.original,
   );
 
   switch (mode) {
-    case _FilterMode.original:
+    case FilterMode.original:
       break;
-    case _FilterMode.grayscale:
+    case FilterMode.grayscale:
       _applyGrayscale(image);
-    case _FilterMode.enhance:
+    case FilterMode.enhance:
       _applyEnhance(image);
-    case _FilterMode.blackwhite:
+    case FilterMode.blackwhite:
       _applyBlackWhite(image);
   }
 
@@ -322,9 +322,9 @@ void _applyEnhance(img.Image image) {
   const bias = -20.0;
   for (final pixel in image) {
     pixel
-      ..r = _adjustChannel(pixel.r, contrast, bias)
-      ..g = _adjustChannel(pixel.g, contrast, bias)
-      ..b = _adjustChannel(pixel.b, contrast, bias);
+      ..r = _adjustChannel(pixel.r.toDouble(), contrast, bias)
+      ..g = _adjustChannel(pixel.g.toDouble(), contrast, bias)
+      ..b = _adjustChannel(pixel.b.toDouble(), contrast, bias);
   }
 }
 
@@ -346,11 +346,12 @@ void _applyBlackWhite(img.Image image) {
 }
 
 int _adjustChannel(num value, double contrast, double bias) {
-  final adjusted = ((value - 128.0) * contrast) + 128.0 + bias;
+  final adjusted = ((value.toDouble() - 128.0) * contrast) + 128.0 + bias;
   if (adjusted < 0) return 0;
   if (adjusted > 255) return 255;
   return adjusted.round();
 }
+
 
 class _SheetHandle extends StatelessWidget {
   const _SheetHandle();

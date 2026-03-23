@@ -1,5 +1,4 @@
 // lib/features/camera/camera_page.dart
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_doc_scanner/flutter_doc_scanner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,10 +6,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/utils.dart';
 import '../../shared/services/document_service.dart';
-import '../../shared/widgets/app_loading.dart';
 import 'camera_providers.dart';
 import 'widgets/capture_button.dart';
-import 'widgets/flash_toggle.dart';
 import 'widgets/thumbnail_strip.dart';
 import 'widgets/crop_enhance_sheet.dart';
 
@@ -22,40 +19,15 @@ class CameraPage extends ConsumerStatefulWidget {
   ConsumerState<CameraPage> createState() => _CameraPageState();
 }
 
-class _CameraPageState extends ConsumerState<CameraPage>
-    with WidgetsBindingObserver {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(cameraControllerProvider.notifier).init();
-    });
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    final notifier = ref.read(cameraControllerProvider.notifier);
-    if (state == AppLifecycleState.inactive) {
-      notifier.dispose();
-    } else if (state == AppLifecycleState.resumed) {
-      notifier.init();
-    }
-  }
-
+class _CameraPageState extends ConsumerState<CameraPage> {
   Future<void> _onCapture() async {
     try {
-      final result = await FlutterDocScanner().getScannedDocumentAsImages();
-      if (result != null && result.images.isNotEmpty) {
+      final dynamic result = await FlutterDocScanner()
+          .getScannedDocumentAsImages();
+      if (result != null && result is Iterable && result.isNotEmpty) {
         final notifier = ref.read(capturedImagesProvider.notifier);
-        for (final path in result.images) {
-          notifier.add(path);
+        for (final path in result) {
+          notifier.add(path.toString());
         }
         ref.read(captureErrorProvider.notifier).state = null;
       }
@@ -120,105 +92,112 @@ class _CameraPageState extends ConsumerState<CameraPage>
 
   @override
   Widget build(BuildContext context) {
-    final ctrlAsync = ref.watch(cameraControllerProvider);
     final captured = ref.watch(capturedImagesProvider);
+
+    // Listen for capture errors
+    ref.listen<String?>(captureErrorProvider, (_, error) {
+      if (error != null && mounted) {
+        showSnackBar(context, error, isError: true);
+      }
+    });
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: ctrlAsync.when(
-        loading: () => const AppLoading(message: 'Starting camera…'),
-        error: (e, _) => Center(
-          child: Text(
-            'Camera error: $e',
-            style: const TextStyle(color: Colors.white),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Placeholder instead of CameraPreview
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.document_scanner_outlined,
+                  size: 80,
+                  color: Colors.white.withOpacity(0.2),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Ready to Scan',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.4),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        data: (controller) {
-          // Listen for capture errors
-          ref.listen<String?>(captureErrorProvider, (_, error) {
-            if (error != null && mounted) {
-              showSnackBar(context, error, isError: true);
-            }
-          });
 
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              // Preview
-              RepaintBoundary(child: CameraPreview(controller)),
-
-              // Top bar
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.close, color: Colors.white),
-                          onPressed: () => context.pop(),
-                        ),
-                        FlashToggle(controller: controller),
-                        TextButton(
-                          onPressed: captured.isNotEmpty ? _onDone : null,
-                          child: Text(
-                            'Done (${captured.length})',
-                            style: TextStyle(
-                              color: captured.isNotEmpty
-                                  ? Colors.white
-                                  : Colors.white38,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+          // Top bar
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
                 ),
-              ),
-
-              // Bottom controls
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: SafeArea(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ThumbnailStrip(
-                        imagePaths: captured,
-                        onTap: (idx) async {
-                          final updated = await showModalBottomSheet<String>(
-                            context: context,
-                            isScrollControlled: true,
-                            builder: (_) =>
-                                CropEnhanceSheet(imagePath: captured[idx]),
-                          );
-                          if (updated != null) {
-                            ref
-                                .read(capturedImagesProvider.notifier)
-                                .replace(idx, updated);
-                          }
-                        },
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => context.pop(),
+                    ),
+                    TextButton(
+                      onPressed: captured.isNotEmpty ? _onDone : null,
+                      child: Text(
+                        'Done (${captured.length})',
+                        style: TextStyle(
+                          color: captured.isNotEmpty
+                              ? Colors.white
+                              : Colors.white38,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                      const SizedBox(height: 16),
-                      CaptureButton(onCapture: _onCapture),
-                      const SizedBox(height: 24),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          );
-        },
+            ),
+          ),
+
+          // Bottom controls
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ThumbnailStrip(
+                    imagePaths: captured,
+                    onTap: (idx) async {
+                      final updated = await showModalBottomSheet<String>(
+                        context: context,
+                        isScrollControlled: true,
+                        builder: (_) =>
+                            CropEnhanceSheet(imagePath: captured[idx]),
+                      );
+                      if (updated != null) {
+                        ref
+                            .read(capturedImagesProvider.notifier)
+                            .replace(idx, updated);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  CaptureButton(onCapture: _onCapture),
+                  const SizedBox(height: 24),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
