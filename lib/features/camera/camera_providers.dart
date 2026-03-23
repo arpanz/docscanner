@@ -38,7 +38,7 @@ class CameraControllerNotifier extends AsyncNotifier<CameraController> {
   }
 
   Future<void> capture() async {
-    final ctrl = state.valueOrNull;
+    final ctrl = state.asData?.value;
     if (ctrl == null || !ctrl.value.isInitialized) return;
     try {
       final file = await ctrl.takePicture();

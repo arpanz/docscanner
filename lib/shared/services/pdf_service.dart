@@ -48,9 +48,11 @@ class PdfService {
 
   /// Share a PDF via the OS share sheet.
   Future<void> sharePdf(File pdfFile, {String? subject}) async {
-    await Share.shareXFiles(
-      [XFile(pdfFile.path, mimeType: 'application/pdf')],
-      subject: subject,
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [XFile(pdfFile.path, mimeType: 'application/pdf')],
+        subject: subject,
+      ),
     );
   }
 
@@ -59,7 +61,9 @@ class PdfService {
     final xFiles = imagePaths
         .map((path) => XFile(path, mimeType: 'image/jpeg'))
         .toList();
-    await Share.shareXFiles(xFiles, subject: subject);
+    await SharePlus.instance.share(
+      ShareParams(files: xFiles, subject: subject),
+    );
   }
 
   // ---------------------------------------------------------------------------
