@@ -54,6 +54,12 @@ class DocCard extends StatelessWidget {
                           ? Image.file(
                               File(document.coverPagePath!),
                               fit: BoxFit.cover,
+                              errorBuilder: (ctx, err, _) => Container(
+                                color: cs.surfaceContainerHigh,
+                                child: Center(
+                                  child: Icon(Icons.broken_image_outlined, color: cs.onSurfaceVariant),
+                                ),
+                              ),
                             )
                           : Container(
                               decoration: BoxDecoration(

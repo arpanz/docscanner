@@ -25,10 +25,18 @@ class PageItem extends StatelessWidget {
             child: InteractiveViewer(
               minScale: 1.0,
               maxScale: 4.0,
-              child: SizedBox.expand(
+              child: Center(
                 child: Image.file(
                   File(page.imagePath),
                   fit: BoxFit.contain,
+                  width: double.infinity,
+                  errorBuilder: (ctx, err, _) => Center(
+                    child: Text(
+                      'Cannot load image\n${page.imagePath}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.red, fontSize: 12),
+                    ),
+                  ),
                 ),
               ),
             ),
