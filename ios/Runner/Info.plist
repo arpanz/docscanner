@@ -45,5 +45,13 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Doc Scanner needs camera access to scan documents.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Doc Scanner needs photo library access to import images.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Doc Scanner needs permission to save scanned documents to your photo library.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Microphone access is required by the camera plugin.</string>
 </dict>
 </plist>
