@@ -53,7 +53,7 @@ class _DocumentViewerPageState extends ConsumerState<DocumentViewerPage> {
           );
         }
         return Scaffold(
-          backgroundColor: Colors.black,
+          backgroundColor: const Color(0xFFEEEEEE),
           extendBodyBehindAppBar: false,
           appBar: AppBar(
             backgroundColor: Theme.of(context).colorScheme.surface,
