@@ -25,17 +25,14 @@ class PdfService {
         pw.Page(
           pageFormat: pageFormat,
           margin: pw.EdgeInsets.zero,
-          build: (ctx) => pw.Center(
-            child: pw.Image(image, fit: pw.BoxFit.contain),
-          ),
+          build: (ctx) =>
+              pw.Center(child: pw.Image(image, fit: pw.BoxFit.contain)),
         ),
       );
     }
 
     final outDir = await getTemporaryDirectory();
-    final outFile = File(
-      p.join(outDir.path, '${_sanitize(title)}.pdf'),
-    );
+    final outFile = File(p.join(outDir.path, '${_sanitize(title)}.pdf'));
     await outFile.writeAsBytes(await doc.save());
     return outFile;
   }
