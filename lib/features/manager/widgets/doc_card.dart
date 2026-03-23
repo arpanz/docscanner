@@ -122,34 +122,54 @@ class DocCard extends StatelessWidget {
                       Positioned(
                         top: 10,
                         right: 10,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.55),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.layers_rounded,
-                                size: 11,
-                                color: Colors.white70,
-                              ),
-                              const SizedBox(width: 3),
-                              Text(
-                                '${document.pageCount}',
-                                style: const TextStyle(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Favourite indicator
+                            if (document.isFavourite)
+                              Container(
+                                margin: const EdgeInsets.only(right: 6),
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withOpacity(0.8),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.favorite_rounded,
+                                  size: 10,
                                   color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
-                            ],
-                          ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.55),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.layers_rounded,
+                                    size: 11,
+                                    color: Colors.white70,
+                                  ),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    '${document.pageCount}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -174,13 +194,22 @@ class DocCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      Text(
-                        relativeDate(document.updatedAt),
-                        style: tt.labelSmall?.copyWith(
-                          color: cs.onSurface.withOpacity(0.6),
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: 0.1,
-                        ),
+                      // Document metadata: pages and size
+                      FutureBuilder<int>(
+                        future: _getDocumentSize(document),
+                        builder: (context, snapshot) {
+                          final sizeStr = snapshot.hasData 
+                              ? formatBytes(snapshot.data!)
+                              : '...';
+                          return Text(
+                            '${document.pageCount} pages · $sizeStr',
+                            style: tt.labelSmall?.copyWith(
+                              color: cs.onSurface.withOpacity(0.6),
+                              fontWeight: FontWeight.w500,
+                              letterSpacing: 0.1,
+                            ),
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -191,6 +220,11 @@ class DocCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<int> _getDocumentSize(Document doc) async {
+    if (doc.coverPagePath == null) return 0;
+    return await fileSize(doc.coverPagePath!);
   }
 }
 
@@ -231,8 +265,13 @@ class _PdfThumbnail extends StatelessWidget {
   Future<Uint8List?> _renderPdf() async {
     try {
       final cacheDir = await getTemporaryDirectory();
+      final thumbDir = Directory(p.join(cacheDir.path, 'pdf_thumbnails'));
+      
+      // Clean up old thumbnails (older than 7 days)
+      await _cleanupOldThumbnails(thumbDir);
+      
       final safeName = '${path.hashCode}_${p.basenameWithoutExtension(path)}.png';
-      final cacheFile = File(p.join(cacheDir.path, 'pdf_thumbnails', safeName));
+      final cacheFile = File(p.join(thumbDir.path, safeName));
 
       if (await cacheFile.exists()) {
         return await cacheFile.readAsBytes();
@@ -242,18 +281,37 @@ class _PdfThumbnail extends StatelessWidget {
       final rasters = await Printing.raster(bytes, pages: [0], dpi: 72).toList();
       if (rasters.isNotEmpty) {
         final pngBytes = await rasters.first.toPng();
-        
-        if (!await cacheFile.parent.exists()) {
-          await cacheFile.parent.create(recursive: true);
+
+        if (!await thumbDir.exists()) {
+          await thumbDir.create(recursive: true);
         }
         await cacheFile.writeAsBytes(pngBytes);
-        
+
         return pngBytes;
       }
     } catch (e) {
       return null;
     }
     return null;
+  }
+
+  Future<void> _cleanupOldThumbnails(Directory thumbDir) async {
+    try {
+      if (!await thumbDir.exists()) return;
+      
+      final now = DateTime.now();
+      await for (final entity in thumbDir.list()) {
+        if (entity is File) {
+          final stat = await entity.stat();
+          final age = now.difference(stat.modified);
+          if (age.inDays > 7) {
+            await entity.delete();
+          }
+        }
+      }
+    } catch (e) {
+      // Ignore cleanup errors
+    }
   }
 }
 

@@ -1,4 +1,5 @@
 // lib/features/viewer/widgets/export_sheet.dart
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -29,13 +30,26 @@ class _ExportSheetState extends ConsumerState<ExportSheet> {
           .read(pagesDaoProvider)
           .getPagesForDocument(widget.docId);
       final paths = pages.map((p) => p.imagePath).toList();
-      final pdfFile = await ref.read(pdfServiceProvider).buildPdf(
-            title: widget.docTitle,
-            imagePaths: paths,
-          );
-      await ref
-          .read(pdfServiceProvider)
-          .sharePdf(pdfFile, subject: widget.docTitle);
+
+      // Check if it's a PDF-based document
+      final isPdf = paths.length == 1 && paths.first.toLowerCase().endsWith('.pdf');
+
+      if (isPdf) {
+        // Share the existing PDF directly
+        final cleanPath = cleanFilePath(paths.first);
+        await ref
+            .read(pdfServiceProvider)
+            .sharePdf(File(cleanPath), subject: widget.docTitle);
+      } else {
+        // Build PDF from images
+        final pdfFile = await ref.read(pdfServiceProvider).buildPdf(
+              title: widget.docTitle,
+              imagePaths: paths,
+            );
+        await ref
+            .read(pdfServiceProvider)
+            .sharePdf(pdfFile, subject: widget.docTitle);
+      }
     });
   }
 
@@ -45,11 +59,20 @@ class _ExportSheetState extends ConsumerState<ExportSheet> {
           .read(pagesDaoProvider)
           .getPagesForDocument(widget.docId);
       final paths = pages.map((p) => p.imagePath).toList();
-      final pdfFile = await ref.read(pdfServiceProvider).buildPdf(
-            title: widget.docTitle,
-            imagePaths: paths,
-          );
-      await ref.read(pdfServiceProvider).printPdf(pdfFile);
+
+      // Check if it's a PDF-based document
+      final isPdf = paths.length == 1 && paths.first.toLowerCase().endsWith('.pdf');
+
+      if (isPdf) {
+        final cleanPath = cleanFilePath(paths.first);
+        await ref.read(pdfServiceProvider).printPdf(File(cleanPath));
+      } else {
+        final pdfFile = await ref.read(pdfServiceProvider).buildPdf(
+              title: widget.docTitle,
+              imagePaths: paths,
+            );
+        await ref.read(pdfServiceProvider).printPdf(pdfFile);
+      }
     });
   }
 
@@ -59,6 +82,14 @@ class _ExportSheetState extends ConsumerState<ExportSheet> {
           .read(pagesDaoProvider)
           .getPagesForDocument(widget.docId);
       final paths = pages.map((p) => p.imagePath).toList();
+
+      // Can't share PDF as images
+      final isPdf = paths.length == 1 && paths.first.toLowerCase().endsWith('.pdf');
+
+      if (isPdf) {
+        throw Exception('Cannot share PDF documents as images. Use "Export as PDF" instead.');
+      }
+
       await ref
           .read(pdfServiceProvider)
           .shareImages(paths, subject: widget.docTitle);

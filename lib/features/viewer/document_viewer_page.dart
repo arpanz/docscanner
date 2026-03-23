@@ -131,6 +131,35 @@ class _DocumentViewerPageState extends ConsumerState<DocumentViewerPage> {
 
               // Reorder mode — full list with drag handles
               if (_reorderMode) {
+                final isPdfDocument = pages.length == 1 && pages.first.imagePath.toLowerCase().endsWith('.pdf');
+                
+                if (isPdfDocument) {
+                  // Can't reorder a single-page PDF document
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.info_outline, size: 48, color: Colors.grey[600]),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Cannot reorder pages in PDF documents',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.grey[600]),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'PDF documents must be split into individual pages first',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+                
                 return ReorderableListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: pages.length,
@@ -151,10 +180,15 @@ class _DocumentViewerPageState extends ConsumerState<DocumentViewerPage> {
                     leading: SizedBox(
                       width: 48,
                       height: 64,
-                      child: Image.file(
-                        File(pages[i].imagePath),
-                        fit: BoxFit.cover,
-                      ),
+                      child: pages[i].imagePath.toLowerCase().endsWith('.pdf')
+                          ? Container(
+                              color: Colors.red[50],
+                              child: const Icon(Icons.picture_as_pdf, color: Colors.red),
+                            )
+                          : Image.file(
+                              File(pages[i].imagePath),
+                              fit: BoxFit.cover,
+                            ),
                     ),
                     title: Text('Page ${i + 1}'),
                     trailing: const Icon(Icons.drag_handle),
@@ -173,19 +207,56 @@ class _DocumentViewerPageState extends ConsumerState<DocumentViewerPage> {
                       page: pages[i],
                       index: i,
                       onDelete: () async {
-                        final ok = await confirmDialog(
-                          context,
-                          title: 'Delete page',
-                          message: 'Remove page ${i + 1}?',
-                        );
-                        if (ok) {
-                          await ref
-                              .read(documentServiceProvider)
-                              .deletePage(
-                                pages[i].id,
-                                pages[i].imagePath,
-                                widget.docId,
+                        final isPdf = pages.length == 1 && pages[i].imagePath.toLowerCase().endsWith('.pdf');
+                        
+                        if (isPdf) {
+                          // For PDF documents, deleting the page means deleting the whole document
+                          final ok = await confirmDialog(
+                            context,
+                            title: 'Delete document',
+                            message: 'Delete "${doc.title}"? This cannot be undone.',
+                          );
+                          if (ok) {
+                            await ref
+                                .read(documentServiceProvider)
+                                .deleteDocument(widget.docId);
+                            if (context.mounted) context.go(AppRoutes.manager);
+                          }
+                        } else {
+                          final ok = await confirmDialog(
+                            context,
+                            title: 'Delete page',
+                            message: 'Remove page ${i + 1}?',
+                          );
+                          if (ok) {
+                            await ref
+                                .read(documentServiceProvider)
+                                .deletePage(
+                                  pages[i].id,
+                                  pages[i].imagePath,
+                                  widget.docId,
+                                );
+                            
+                            // Show undo snackbar
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Page ${i + 1} deleted'),
+                                  action: SnackBarAction(
+                                    label: 'Undo',
+                                    onPressed: () {
+                                      // Note: Full undo would require keeping the file
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Undo not available - file was deleted'),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
                               );
+                            }
+                          }
                         }
                       },
                     ),
@@ -215,7 +286,7 @@ class _DocumentViewerPageState extends ConsumerState<DocumentViewerPage> {
                           ],
                         ),
                         child: Text(
-                          '${_currentPage + 1} • ${pages.length}',
+                          '${_currentPage + 1} / ${pages.length}',
                           style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w600,
@@ -268,12 +339,12 @@ class _DocumentViewerPageState extends ConsumerState<DocumentViewerPage> {
             ],
           ),
         );
-        if (name != null && name.isNotEmpty) {
+        if (name != null && name.isNotEmpty && context.mounted) {
           await ref
               .read(documentServiceProvider)
               .renameDocument(widget.docId, name);
         }
-        if (!context.mounted) return;
+        break;
       case _MenuAction.delete:
         final ok = await confirmDialog(
           context,
@@ -282,8 +353,7 @@ class _DocumentViewerPageState extends ConsumerState<DocumentViewerPage> {
         );
         if (!ok || !context.mounted) return;
         await ref.read(documentServiceProvider).deleteDocument(widget.docId);
-        if (!context.mounted) return;
-        context.go(AppRoutes.manager);
+        if (context.mounted) context.go(AppRoutes.manager);
     }
   }
 }

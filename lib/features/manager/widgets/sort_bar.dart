@@ -12,16 +12,16 @@ class SortBar extends ConsumerWidget {
     final theme = Theme.of(context);
 
     return SizedBox(
-      height: 48,
+      height: 40,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         children: SortOption.values.map((opt) {
           final selected = opt == current;
           return Padding(
-            padding: const EdgeInsets.only(right: 8),
+            padding: const EdgeInsets.only(right: 6),
             child: ChoiceChip(
-              label: Text(opt.label),
+              label: Text(opt.label, style: const TextStyle(fontSize: 12)),
               selected: selected,
               showCheckmark: false,
               backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
@@ -33,7 +33,7 @@ class SortBar extends ConsumerWidget {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               onSelected: (_) =>
                   ref.read(sortOptionProvider.notifier).state = opt,
-              labelStyle: theme.textTheme.labelMedium?.copyWith(
+              labelStyle: theme.textTheme.labelSmall?.copyWith(
                 color: selected
                     ? theme.colorScheme.onPrimaryContainer
                     : theme.colorScheme.onSurfaceVariant,

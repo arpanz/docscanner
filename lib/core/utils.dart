@@ -38,6 +38,26 @@ Future<int> fileSize(String path) async {
   }
 }
 
+/// Returns the total size of multiple files in bytes.
+Future<int> totalFileSize(List<String> paths) async {
+  int total = 0;
+  for (final path in paths) {
+    try {
+      total += await File(path).length();
+    } catch (_) {}
+  }
+  return total;
+}
+
+/// Cleans a file path by removing 'file://' prefix if present.
+/// This ensures consistent file path handling across the app.
+String cleanFilePath(String path) {
+  if (path.startsWith('file://')) {
+    return Uri.parse(path).toFilePath();
+  }
+  return path;
+}
+
 // ---------------------------------------------------------------------------
 // String helpers
 // ---------------------------------------------------------------------------

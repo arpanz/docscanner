@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/constants.dart';
+import '../../core/utils.dart';
 import '../../database/app_database.dart';
 import '../../database/daos.dart';
 
@@ -62,10 +63,8 @@ class DocumentService {
       );
 
       // Clean the path in case `file://` is still prefixed
-      final cleanPath = pdfPath.startsWith('file://')
-          ? Uri.parse(pdfPath).toFilePath()
-          : pdfPath;
-      
+      final cleanPath = cleanFilePath(pdfPath);
+
       await File(cleanPath).copy(dest);
 
       await _pagesDao.insertPage(
@@ -137,6 +136,13 @@ class DocumentService {
   }
 
   // ---------------------------------------------------------------------------
+  // Refresh document metadata (page count, cover)
+  // ---------------------------------------------------------------------------
+  Future<void> refreshDocumentMeta(int docId) async {
+    await _docsDao.refreshDocumentMeta(docId);
+  }
+
+  // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
   Future<void> _addPages(
@@ -145,14 +151,13 @@ class DocumentService {
     int startIndex = 0,
   }) async {
     final dir = await _pagesDir();
-    var successCount = 0;
-    Object? lastError;
+    final successfullyAdded = <int>[]; // Track which indices were successfully added
 
     for (var i = 0; i < imagePaths.length; i++) {
       final rawSrc = imagePaths[i];
       // flutter_doc_scanner 0.0.17 returns paths like 'file:///storage/emulated/0/...'.
       // File() needs an absolute filesystem path.
-      final src = rawSrc.startsWith('file://') ? Uri.parse(rawSrc).toFilePath() : rawSrc;
+      final src = cleanFilePath(rawSrc);
       final dest = p.join(
         dir.path,
         '${docId}_${startIndex + i}_${DateTime.now().microsecondsSinceEpoch}.jpg',
@@ -163,21 +168,17 @@ class DocumentService {
           PagesCompanion(
             documentId: Value(docId),
             imagePath: Value(dest),
-            pageIndex: Value(startIndex + successCount),
+            pageIndex: Value(startIndex + successfullyAdded.length),
           ),
         );
-        successCount++;
+        successfullyAdded.add(i);
       } catch (e) {
         // Skip this page — don't crash the whole document
         debugPrint('Failed to save page $i: $e');
-        lastError = e;
       }
     }
 
-    if (successCount == 0) {
-      if (lastError != null) {
-        throw Exception('All images failed to process. Reason: $lastError');
-      }
+    if (successfullyAdded.isEmpty) {
       throw Exception('No pages could be saved — all images failed to process');
     }
   }

@@ -9,6 +9,7 @@ class DocScannerApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
+    final themeMode = ref.watch(themeModeProvider);
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -18,7 +19,7 @@ class DocScannerApp extends ConsumerWidget {
         title: 'Doc Scanner',
         theme: AppTheme.light,
         darkTheme: AppTheme.dark,
-        themeMode: ThemeMode.system,
+        themeMode: themeMode,
         routerConfig: router,
         debugShowCheckedModeBanner: false,
       ),

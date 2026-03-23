@@ -28,8 +28,16 @@ final searchQueryProvider = StateProvider<String>((_) => '');
 
 final isGridViewProvider = StateProvider<bool>((ref) => true);
 
+final showFavouritesOnlyProvider = StateProvider<bool>((ref) => false);
+
 final allDocumentsProvider = StreamProvider<List<Document>>((ref) {
-  return ref.watch(documentsDaoProvider).watchAllDocuments();
+  final dao = ref.watch(documentsDaoProvider);
+  final showFavourites = ref.watch(showFavouritesOnlyProvider);
+  
+  if (showFavourites) {
+    return dao.watchFavourites();
+  }
+  return dao.watchAllDocuments();
 });
 
 final filteredDocumentsProvider = Provider<AsyncValue<List<Document>>>((ref) {
