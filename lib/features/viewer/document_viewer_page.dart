@@ -1,4 +1,5 @@
 // lib/features/viewer/document_viewer_page.dart
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -13,14 +14,29 @@ import 'viewer_providers.dart';
 import 'widgets/page_item.dart';
 import 'widgets/export_sheet.dart';
 
-class DocumentViewerPage extends ConsumerWidget {
+class DocumentViewerPage extends ConsumerStatefulWidget {
   const DocumentViewerPage({super.key, required this.docId});
   final int docId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final docAsync = ref.watch(documentProvider(docId));
-    final pagesAsync = ref.watch(documentPagesProvider(docId));
+  ConsumerState<DocumentViewerPage> createState() => _DocumentViewerPageState();
+}
+
+class _DocumentViewerPageState extends ConsumerState<DocumentViewerPage> {
+  final _pageController = PageController();
+  int _currentPage = 0;
+  bool _reorderMode = false;
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final docAsync = ref.watch(documentProvider(widget.docId));
+    final pagesAsync = ref.watch(documentPagesProvider(widget.docId));
 
     return docAsync.when(
       loading: () => const Scaffold(body: AppLoading()),
@@ -39,12 +55,18 @@ class DocumentViewerPage extends ConsumerWidget {
           appBar: AppBar(
             title: Text(doc.title),
             actions: [
+              // Toggle reorder mode
+              IconButton(
+                icon: Icon(_reorderMode ? Icons.check : Icons.reorder),
+                tooltip: _reorderMode ? 'Done reordering' : 'Reorder pages',
+                onPressed: () => setState(() => _reorderMode = !_reorderMode),
+              ),
               // Add more pages
               IconButton(
                 icon: const Icon(Icons.add_a_photo_outlined),
                 tooltip: 'Add pages',
                 onPressed: () =>
-                    context.push('${AppRoutes.camera}?docId=$docId'),
+                    context.push('${AppRoutes.camera}?docId=${widget.docId}'),
               ),
               // Export
               IconButton(
@@ -54,8 +76,7 @@ class DocumentViewerPage extends ConsumerWidget {
               ),
               // More options
               PopupMenuButton<_MenuAction>(
-                onSelected: (action) =>
-                    _handleMenu(context, ref, doc, action),
+                onSelected: (action) => _handleMenu(context, ref, doc, action),
                 itemBuilder: (_) => const [
                   PopupMenuItem(
                     value: _MenuAction.rename,
@@ -80,37 +101,91 @@ class DocumentViewerPage extends ConsumerWidget {
                   subtitle: 'Add pages using the camera button above.',
                 );
               }
-              return ReorderableListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: pages.length,
-                onReorder: (oldIdx, newIdx) async {
-                  if (newIdx > oldIdx) newIdx--;
-                  final reordered = [...pages];
-                  final item = reordered.removeAt(oldIdx);
-                  reordered.insert(newIdx, item);
-                  await ref
-                      .read(documentServiceProvider)
-                      .reorderPages(docId, reordered.map((p) => p.id).toList());
-                },
-                itemBuilder: (ctx, i) => PageItem(
-                  key: ValueKey(pages[i].id),
-                  page: pages[i],
-                  index: i,
-                  onDelete: () async {
-                    final ok = await confirmDialog(
-                      context,
-                      title: 'Delete page',
-                      message: 'Remove page ${i + 1}?',
-                    );
-                    if (ok) {
-                      await ref.read(documentServiceProvider).deletePage(
-                            pages[i].id,
-                            pages[i].imagePath,
-                            docId,
-                          );
-                    }
+
+              // Reorder mode — full list with drag handles
+              if (_reorderMode) {
+                return ReorderableListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: pages.length,
+                  onReorder: (oldIdx, newIdx) async {
+                    if (newIdx > oldIdx) newIdx--;
+                    final reordered = [...pages];
+                    final item = reordered.removeAt(oldIdx);
+                    reordered.insert(newIdx, item);
+                    await ref
+                        .read(documentServiceProvider)
+                        .reorderPages(
+                          widget.docId,
+                          reordered.map((p) => p.id).toList(),
+                        );
                   },
-                ),
+                  itemBuilder: (ctx, i) => ListTile(
+                    key: ValueKey(pages[i].id),
+                    leading: SizedBox(
+                      width: 48,
+                      height: 64,
+                      child: Image.file(
+                        File(pages[i].imagePath),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    title: Text('Page ${i + 1}'),
+                    trailing: const Icon(Icons.drag_handle),
+                  ),
+                );
+              }
+
+              // Normal mode — swipeable full-screen pages
+              return Stack(
+                children: [
+                  PageView.builder(
+                    controller: _pageController,
+                    itemCount: pages.length,
+                    onPageChanged: (i) => setState(() => _currentPage = i),
+                    itemBuilder: (ctx, i) => PageItem(
+                      page: pages[i],
+                      index: i,
+                      onDelete: () async {
+                        final ok = await confirmDialog(
+                          context,
+                          title: 'Delete page',
+                          message: 'Remove page ${i + 1}?',
+                        );
+                        if (ok) {
+                          await ref
+                              .read(documentServiceProvider)
+                              .deletePage(
+                                pages[i].id,
+                                pages[i].imagePath,
+                                widget.docId,
+                              );
+                        }
+                      },
+                    ),
+                  ),
+                  // Page counter overlay
+                  Positioned(
+                    bottom: 16,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '${_currentPage + 1} / ${pages.length}',
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               );
             },
           ),
@@ -122,7 +197,7 @@ class DocumentViewerPage extends ConsumerWidget {
   void _showExport(BuildContext context, WidgetRef ref, Document doc) {
     showModalBottomSheet(
       context: context,
-      builder: (_) => ExportSheet(docId: docId, docTitle: doc.title),
+      builder: (_) => ExportSheet(docId: widget.docId, docTitle: doc.title),
     );
   }
 
@@ -142,16 +217,20 @@ class DocumentViewerPage extends ConsumerWidget {
             content: TextField(controller: ctrl, autofocus: true),
             actions: [
               TextButton(
-                  onPressed: () => Navigator.pop(d),
-                  child: const Text('Cancel')),
+                onPressed: () => Navigator.pop(d),
+                child: const Text('Cancel'),
+              ),
               FilledButton(
-                  onPressed: () => Navigator.pop(d, ctrl.text.trim()),
-                  child: const Text('Rename')),
+                onPressed: () => Navigator.pop(d, ctrl.text.trim()),
+                child: const Text('Rename'),
+              ),
             ],
           ),
         );
         if (name != null && name.isNotEmpty) {
-          await ref.read(documentServiceProvider).renameDocument(docId, name);
+          await ref
+              .read(documentServiceProvider)
+              .renameDocument(widget.docId, name);
         }
         if (!context.mounted) return;
       case _MenuAction.delete:
@@ -161,7 +240,7 @@ class DocumentViewerPage extends ConsumerWidget {
           message: 'Delete "${doc.title}"? This cannot be undone.',
         );
         if (!ok || !context.mounted) return;
-        await ref.read(documentServiceProvider).deleteDocument(docId);
+        await ref.read(documentServiceProvider).deleteDocument(widget.docId);
         if (!context.mounted) return;
         context.go(AppRoutes.manager);
     }

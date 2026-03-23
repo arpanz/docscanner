@@ -12,6 +12,7 @@ class Documents extends Table {
   IntColumn get pageCount => integer().withDefault(const Constant(0))();
   TextColumn get coverPagePath => text().nullable()();
   BoolColumn get isFavourite => boolean().withDefault(const Constant(false))();
+  TextColumn get ocrText => text().nullable()();
 }
 
 // ---------------------------------------------------------------------------

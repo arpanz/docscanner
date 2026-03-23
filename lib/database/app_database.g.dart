@@ -12,71 +12,123 @@ class $DocumentsTable extends Documents
   static const VerificationMeta _idMeta = const VerificationMeta('id');
   @override
   late final GeneratedColumn<int> id = GeneratedColumn<int>(
-      'id', aliasedName, false,
-      hasAutoIncrement: true,
-      type: DriftSqlType.int,
-      requiredDuringInsert: false,
-      defaultConstraints:
-          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
   static const VerificationMeta _titleMeta = const VerificationMeta('title');
   @override
   late final GeneratedColumn<String> title = GeneratedColumn<String>(
-      'title', aliasedName, false,
-      additionalChecks:
-          GeneratedColumn.checkTextLength(minTextLength: 1, maxTextLength: 200),
-      type: DriftSqlType.string,
-      requiredDuringInsert: true);
-  static const VerificationMeta _createdAtMeta =
-      const VerificationMeta('createdAt');
+    'title',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 200,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
   @override
   late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
-      'created_at', aliasedName, false,
-      type: DriftSqlType.dateTime,
-      requiredDuringInsert: false,
-      defaultValue: currentDateAndTime);
-  static const VerificationMeta _updatedAtMeta =
-      const VerificationMeta('updatedAt');
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
   @override
   late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
-      'updated_at', aliasedName, false,
-      type: DriftSqlType.dateTime,
-      requiredDuringInsert: false,
-      defaultValue: currentDateAndTime);
-  static const VerificationMeta _pageCountMeta =
-      const VerificationMeta('pageCount');
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _pageCountMeta = const VerificationMeta(
+    'pageCount',
+  );
   @override
   late final GeneratedColumn<int> pageCount = GeneratedColumn<int>(
-      'page_count', aliasedName, false,
-      type: DriftSqlType.int,
-      requiredDuringInsert: false,
-      defaultValue: const Constant(0));
-  static const VerificationMeta _coverPagePathMeta =
-      const VerificationMeta('coverPagePath');
+    'page_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _coverPagePathMeta = const VerificationMeta(
+    'coverPagePath',
+  );
   @override
   late final GeneratedColumn<String> coverPagePath = GeneratedColumn<String>(
-      'cover_page_path', aliasedName, true,
-      type: DriftSqlType.string, requiredDuringInsert: false);
-  static const VerificationMeta _isFavouriteMeta =
-      const VerificationMeta('isFavourite');
+    'cover_page_path',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isFavouriteMeta = const VerificationMeta(
+    'isFavourite',
+  );
   @override
   late final GeneratedColumn<bool> isFavourite = GeneratedColumn<bool>(
-      'is_favourite', aliasedName, false,
-      type: DriftSqlType.bool,
-      requiredDuringInsert: false,
-      defaultConstraints: GeneratedColumn.constraintIsAlways(
-          'CHECK ("is_favourite" IN (0, 1))'),
-      defaultValue: const Constant(false));
+    'is_favourite',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_favourite" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _ocrTextMeta = const VerificationMeta(
+    'ocrText',
+  );
   @override
-  List<GeneratedColumn> get $columns =>
-      [id, title, createdAt, updatedAt, pageCount, coverPagePath, isFavourite];
+  late final GeneratedColumn<String> ocrText = GeneratedColumn<String>(
+    'ocr_text',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    title,
+    createdAt,
+    updatedAt,
+    pageCount,
+    coverPagePath,
+    isFavourite,
+    ocrText,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
   String get actualTableName => $name;
   static const String $name = 'documents';
   @override
-  VerificationContext validateIntegrity(Insertable<Document> instance,
-      {bool isInserting = false}) {
+  VerificationContext validateIntegrity(
+    Insertable<Document> instance, {
+    bool isInserting = false,
+  }) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
@@ -84,33 +136,53 @@ class $DocumentsTable extends Documents
     }
     if (data.containsKey('title')) {
       context.handle(
-          _titleMeta, title.isAcceptableOrUnknown(data['title']!, _titleMeta));
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
     } else if (isInserting) {
       context.missing(_titleMeta);
     }
     if (data.containsKey('created_at')) {
-      context.handle(_createdAtMeta,
-          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
     }
     if (data.containsKey('updated_at')) {
-      context.handle(_updatedAtMeta,
-          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
     }
     if (data.containsKey('page_count')) {
-      context.handle(_pageCountMeta,
-          pageCount.isAcceptableOrUnknown(data['page_count']!, _pageCountMeta));
+      context.handle(
+        _pageCountMeta,
+        pageCount.isAcceptableOrUnknown(data['page_count']!, _pageCountMeta),
+      );
     }
     if (data.containsKey('cover_page_path')) {
       context.handle(
+        _coverPagePathMeta,
+        coverPagePath.isAcceptableOrUnknown(
+          data['cover_page_path']!,
           _coverPagePathMeta,
-          coverPagePath.isAcceptableOrUnknown(
-              data['cover_page_path']!, _coverPagePathMeta));
+        ),
+      );
     }
     if (data.containsKey('is_favourite')) {
       context.handle(
+        _isFavouriteMeta,
+        isFavourite.isAcceptableOrUnknown(
+          data['is_favourite']!,
           _isFavouriteMeta,
-          isFavourite.isAcceptableOrUnknown(
-              data['is_favourite']!, _isFavouriteMeta));
+        ),
+      );
+    }
+    if (data.containsKey('ocr_text')) {
+      context.handle(
+        _ocrTextMeta,
+        ocrText.isAcceptableOrUnknown(data['ocr_text']!, _ocrTextMeta),
+      );
     }
     return context;
   }
@@ -121,20 +193,38 @@ class $DocumentsTable extends Documents
   Document map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return Document(
-      id: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
-      title: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}title'])!,
-      createdAt: attachedDatabase.typeMapping
-          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
-      updatedAt: attachedDatabase.typeMapping
-          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
-      pageCount: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}page_count'])!,
-      coverPagePath: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}cover_page_path']),
-      isFavourite: attachedDatabase.typeMapping
-          .read(DriftSqlType.bool, data['${effectivePrefix}is_favourite'])!,
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      pageCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}page_count'],
+      )!,
+      coverPagePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}cover_page_path'],
+      ),
+      isFavourite: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_favourite'],
+      )!,
+      ocrText: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}ocr_text'],
+      ),
     );
   }
 
@@ -152,14 +242,17 @@ class Document extends DataClass implements Insertable<Document> {
   final int pageCount;
   final String? coverPagePath;
   final bool isFavourite;
-  const Document(
-      {required this.id,
-      required this.title,
-      required this.createdAt,
-      required this.updatedAt,
-      required this.pageCount,
-      this.coverPagePath,
-      required this.isFavourite});
+  final String? ocrText;
+  const Document({
+    required this.id,
+    required this.title,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.pageCount,
+    this.coverPagePath,
+    required this.isFavourite,
+    this.ocrText,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -172,6 +265,9 @@ class Document extends DataClass implements Insertable<Document> {
       map['cover_page_path'] = Variable<String>(coverPagePath);
     }
     map['is_favourite'] = Variable<bool>(isFavourite);
+    if (!nullToAbsent || ocrText != null) {
+      map['ocr_text'] = Variable<String>(ocrText);
+    }
     return map;
   }
 
@@ -186,11 +282,16 @@ class Document extends DataClass implements Insertable<Document> {
           ? const Value.absent()
           : Value(coverPagePath),
       isFavourite: Value(isFavourite),
+      ocrText: ocrText == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ocrText),
     );
   }
 
-  factory Document.fromJson(Map<String, dynamic> json,
-      {ValueSerializer? serializer}) {
+  factory Document.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return Document(
       id: serializer.fromJson<int>(json['id']),
@@ -200,6 +301,7 @@ class Document extends DataClass implements Insertable<Document> {
       pageCount: serializer.fromJson<int>(json['pageCount']),
       coverPagePath: serializer.fromJson<String?>(json['coverPagePath']),
       isFavourite: serializer.fromJson<bool>(json['isFavourite']),
+      ocrText: serializer.fromJson<String?>(json['ocrText']),
     );
   }
   @override
@@ -213,27 +315,31 @@ class Document extends DataClass implements Insertable<Document> {
       'pageCount': serializer.toJson<int>(pageCount),
       'coverPagePath': serializer.toJson<String?>(coverPagePath),
       'isFavourite': serializer.toJson<bool>(isFavourite),
+      'ocrText': serializer.toJson<String?>(ocrText),
     };
   }
 
-  Document copyWith(
-          {int? id,
-          String? title,
-          DateTime? createdAt,
-          DateTime? updatedAt,
-          int? pageCount,
-          Value<String?> coverPagePath = const Value.absent(),
-          bool? isFavourite}) =>
-      Document(
-        id: id ?? this.id,
-        title: title ?? this.title,
-        createdAt: createdAt ?? this.createdAt,
-        updatedAt: updatedAt ?? this.updatedAt,
-        pageCount: pageCount ?? this.pageCount,
-        coverPagePath:
-            coverPagePath.present ? coverPagePath.value : this.coverPagePath,
-        isFavourite: isFavourite ?? this.isFavourite,
-      );
+  Document copyWith({
+    int? id,
+    String? title,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    int? pageCount,
+    Value<String?> coverPagePath = const Value.absent(),
+    bool? isFavourite,
+    Value<String?> ocrText = const Value.absent(),
+  }) => Document(
+    id: id ?? this.id,
+    title: title ?? this.title,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    pageCount: pageCount ?? this.pageCount,
+    coverPagePath: coverPagePath.present
+        ? coverPagePath.value
+        : this.coverPagePath,
+    isFavourite: isFavourite ?? this.isFavourite,
+    ocrText: ocrText.present ? ocrText.value : this.ocrText,
+  );
   Document copyWithCompanion(DocumentsCompanion data) {
     return Document(
       id: data.id.present ? data.id.value : this.id,
@@ -244,8 +350,10 @@ class Document extends DataClass implements Insertable<Document> {
       coverPagePath: data.coverPagePath.present
           ? data.coverPagePath.value
           : this.coverPagePath,
-      isFavourite:
-          data.isFavourite.present ? data.isFavourite.value : this.isFavourite,
+      isFavourite: data.isFavourite.present
+          ? data.isFavourite.value
+          : this.isFavourite,
+      ocrText: data.ocrText.present ? data.ocrText.value : this.ocrText,
     );
   }
 
@@ -258,14 +366,23 @@ class Document extends DataClass implements Insertable<Document> {
           ..write('updatedAt: $updatedAt, ')
           ..write('pageCount: $pageCount, ')
           ..write('coverPagePath: $coverPagePath, ')
-          ..write('isFavourite: $isFavourite')
+          ..write('isFavourite: $isFavourite, ')
+          ..write('ocrText: $ocrText')
           ..write(')'))
         .toString();
   }
 
   @override
   int get hashCode => Object.hash(
-      id, title, createdAt, updatedAt, pageCount, coverPagePath, isFavourite);
+    id,
+    title,
+    createdAt,
+    updatedAt,
+    pageCount,
+    coverPagePath,
+    isFavourite,
+    ocrText,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -276,7 +393,8 @@ class Document extends DataClass implements Insertable<Document> {
           other.updatedAt == this.updatedAt &&
           other.pageCount == this.pageCount &&
           other.coverPagePath == this.coverPagePath &&
-          other.isFavourite == this.isFavourite);
+          other.isFavourite == this.isFavourite &&
+          other.ocrText == this.ocrText);
 }
 
 class DocumentsCompanion extends UpdateCompanion<Document> {
@@ -287,6 +405,7 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
   final Value<int> pageCount;
   final Value<String?> coverPagePath;
   final Value<bool> isFavourite;
+  final Value<String?> ocrText;
   const DocumentsCompanion({
     this.id = const Value.absent(),
     this.title = const Value.absent(),
@@ -295,6 +414,7 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
     this.pageCount = const Value.absent(),
     this.coverPagePath = const Value.absent(),
     this.isFavourite = const Value.absent(),
+    this.ocrText = const Value.absent(),
   });
   DocumentsCompanion.insert({
     this.id = const Value.absent(),
@@ -304,6 +424,7 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
     this.pageCount = const Value.absent(),
     this.coverPagePath = const Value.absent(),
     this.isFavourite = const Value.absent(),
+    this.ocrText = const Value.absent(),
   }) : title = Value(title);
   static Insertable<Document> custom({
     Expression<int>? id,
@@ -313,6 +434,7 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
     Expression<int>? pageCount,
     Expression<String>? coverPagePath,
     Expression<bool>? isFavourite,
+    Expression<String>? ocrText,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -322,17 +444,20 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
       if (pageCount != null) 'page_count': pageCount,
       if (coverPagePath != null) 'cover_page_path': coverPagePath,
       if (isFavourite != null) 'is_favourite': isFavourite,
+      if (ocrText != null) 'ocr_text': ocrText,
     });
   }
 
-  DocumentsCompanion copyWith(
-      {Value<int>? id,
-      Value<String>? title,
-      Value<DateTime>? createdAt,
-      Value<DateTime>? updatedAt,
-      Value<int>? pageCount,
-      Value<String?>? coverPagePath,
-      Value<bool>? isFavourite}) {
+  DocumentsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? title,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? pageCount,
+    Value<String?>? coverPagePath,
+    Value<bool>? isFavourite,
+    Value<String?>? ocrText,
+  }) {
     return DocumentsCompanion(
       id: id ?? this.id,
       title: title ?? this.title,
@@ -341,6 +466,7 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
       pageCount: pageCount ?? this.pageCount,
       coverPagePath: coverPagePath ?? this.coverPagePath,
       isFavourite: isFavourite ?? this.isFavourite,
+      ocrText: ocrText ?? this.ocrText,
     );
   }
 
@@ -368,6 +494,9 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
     if (isFavourite.present) {
       map['is_favourite'] = Variable<bool>(isFavourite.value);
     }
+    if (ocrText.present) {
+      map['ocr_text'] = Variable<String>(ocrText.value);
+    }
     return map;
   }
 
@@ -380,7 +509,8 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
           ..write('updatedAt: $updatedAt, ')
           ..write('pageCount: $pageCount, ')
           ..write('coverPagePath: $coverPagePath, ')
-          ..write('isFavourite: $isFavourite')
+          ..write('isFavourite: $isFavourite, ')
+          ..write('ocrText: $ocrText')
           ..write(')'))
         .toString();
   }
@@ -394,52 +524,82 @@ class $PagesTable extends Pages with TableInfo<$PagesTable, Page> {
   static const VerificationMeta _idMeta = const VerificationMeta('id');
   @override
   late final GeneratedColumn<int> id = GeneratedColumn<int>(
-      'id', aliasedName, false,
-      hasAutoIncrement: true,
-      type: DriftSqlType.int,
-      requiredDuringInsert: false,
-      defaultConstraints:
-          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
-  static const VerificationMeta _documentIdMeta =
-      const VerificationMeta('documentId');
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _documentIdMeta = const VerificationMeta(
+    'documentId',
+  );
   @override
   late final GeneratedColumn<int> documentId = GeneratedColumn<int>(
-      'document_id', aliasedName, false,
-      type: DriftSqlType.int,
-      requiredDuringInsert: true,
-      defaultConstraints:
-          GeneratedColumn.constraintIsAlways('REFERENCES documents (id)'));
-  static const VerificationMeta _imagePathMeta =
-      const VerificationMeta('imagePath');
+    'document_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES documents (id)',
+    ),
+  );
+  static const VerificationMeta _imagePathMeta = const VerificationMeta(
+    'imagePath',
+  );
   @override
   late final GeneratedColumn<String> imagePath = GeneratedColumn<String>(
-      'image_path', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
-  static const VerificationMeta _pageIndexMeta =
-      const VerificationMeta('pageIndex');
+    'image_path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _pageIndexMeta = const VerificationMeta(
+    'pageIndex',
+  );
   @override
   late final GeneratedColumn<int> pageIndex = GeneratedColumn<int>(
-      'page_index', aliasedName, false,
-      type: DriftSqlType.int, requiredDuringInsert: true);
-  static const VerificationMeta _createdAtMeta =
-      const VerificationMeta('createdAt');
+    'page_index',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
   @override
   late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
-      'created_at', aliasedName, false,
-      type: DriftSqlType.dateTime,
-      requiredDuringInsert: false,
-      defaultValue: currentDateAndTime);
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
   @override
-  List<GeneratedColumn> get $columns =>
-      [id, documentId, imagePath, pageIndex, createdAt];
+  List<GeneratedColumn> get $columns => [
+    id,
+    documentId,
+    imagePath,
+    pageIndex,
+    createdAt,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
   String get actualTableName => $name;
   static const String $name = 'pages';
   @override
-  VerificationContext validateIntegrity(Insertable<Page> instance,
-      {bool isInserting = false}) {
+  VerificationContext validateIntegrity(
+    Insertable<Page> instance, {
+    bool isInserting = false,
+  }) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
@@ -447,27 +607,33 @@ class $PagesTable extends Pages with TableInfo<$PagesTable, Page> {
     }
     if (data.containsKey('document_id')) {
       context.handle(
-          _documentIdMeta,
-          documentId.isAcceptableOrUnknown(
-              data['document_id']!, _documentIdMeta));
+        _documentIdMeta,
+        documentId.isAcceptableOrUnknown(data['document_id']!, _documentIdMeta),
+      );
     } else if (isInserting) {
       context.missing(_documentIdMeta);
     }
     if (data.containsKey('image_path')) {
-      context.handle(_imagePathMeta,
-          imagePath.isAcceptableOrUnknown(data['image_path']!, _imagePathMeta));
+      context.handle(
+        _imagePathMeta,
+        imagePath.isAcceptableOrUnknown(data['image_path']!, _imagePathMeta),
+      );
     } else if (isInserting) {
       context.missing(_imagePathMeta);
     }
     if (data.containsKey('page_index')) {
-      context.handle(_pageIndexMeta,
-          pageIndex.isAcceptableOrUnknown(data['page_index']!, _pageIndexMeta));
+      context.handle(
+        _pageIndexMeta,
+        pageIndex.isAcceptableOrUnknown(data['page_index']!, _pageIndexMeta),
+      );
     } else if (isInserting) {
       context.missing(_pageIndexMeta);
     }
     if (data.containsKey('created_at')) {
-      context.handle(_createdAtMeta,
-          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
     }
     return context;
   }
@@ -478,16 +644,26 @@ class $PagesTable extends Pages with TableInfo<$PagesTable, Page> {
   Page map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return Page(
-      id: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
-      documentId: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}document_id'])!,
-      imagePath: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}image_path'])!,
-      pageIndex: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}page_index'])!,
-      createdAt: attachedDatabase.typeMapping
-          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      documentId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}document_id'],
+      )!,
+      imagePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}image_path'],
+      )!,
+      pageIndex: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}page_index'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
     );
   }
 
@@ -503,12 +679,13 @@ class Page extends DataClass implements Insertable<Page> {
   final String imagePath;
   final int pageIndex;
   final DateTime createdAt;
-  const Page(
-      {required this.id,
-      required this.documentId,
-      required this.imagePath,
-      required this.pageIndex,
-      required this.createdAt});
+  const Page({
+    required this.id,
+    required this.documentId,
+    required this.imagePath,
+    required this.pageIndex,
+    required this.createdAt,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -530,8 +707,10 @@ class Page extends DataClass implements Insertable<Page> {
     );
   }
 
-  factory Page.fromJson(Map<String, dynamic> json,
-      {ValueSerializer? serializer}) {
+  factory Page.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return Page(
       id: serializer.fromJson<int>(json['id']),
@@ -553,24 +732,25 @@ class Page extends DataClass implements Insertable<Page> {
     };
   }
 
-  Page copyWith(
-          {int? id,
-          int? documentId,
-          String? imagePath,
-          int? pageIndex,
-          DateTime? createdAt}) =>
-      Page(
-        id: id ?? this.id,
-        documentId: documentId ?? this.documentId,
-        imagePath: imagePath ?? this.imagePath,
-        pageIndex: pageIndex ?? this.pageIndex,
-        createdAt: createdAt ?? this.createdAt,
-      );
+  Page copyWith({
+    int? id,
+    int? documentId,
+    String? imagePath,
+    int? pageIndex,
+    DateTime? createdAt,
+  }) => Page(
+    id: id ?? this.id,
+    documentId: documentId ?? this.documentId,
+    imagePath: imagePath ?? this.imagePath,
+    pageIndex: pageIndex ?? this.pageIndex,
+    createdAt: createdAt ?? this.createdAt,
+  );
   Page copyWithCompanion(PagesCompanion data) {
     return Page(
       id: data.id.present ? data.id.value : this.id,
-      documentId:
-          data.documentId.present ? data.documentId.value : this.documentId,
+      documentId: data.documentId.present
+          ? data.documentId.value
+          : this.documentId,
       imagePath: data.imagePath.present ? data.imagePath.value : this.imagePath,
       pageIndex: data.pageIndex.present ? data.pageIndex.value : this.pageIndex,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -622,9 +802,9 @@ class PagesCompanion extends UpdateCompanion<Page> {
     required String imagePath,
     required int pageIndex,
     this.createdAt = const Value.absent(),
-  })  : documentId = Value(documentId),
-        imagePath = Value(imagePath),
-        pageIndex = Value(pageIndex);
+  }) : documentId = Value(documentId),
+       imagePath = Value(imagePath),
+       pageIndex = Value(pageIndex);
   static Insertable<Page> custom({
     Expression<int>? id,
     Expression<int>? documentId,
@@ -641,12 +821,13 @@ class PagesCompanion extends UpdateCompanion<Page> {
     });
   }
 
-  PagesCompanion copyWith(
-      {Value<int>? id,
-      Value<int>? documentId,
-      Value<String>? imagePath,
-      Value<int>? pageIndex,
-      Value<DateTime>? createdAt}) {
+  PagesCompanion copyWith({
+    Value<int>? id,
+    Value<int>? documentId,
+    Value<String>? imagePath,
+    Value<int>? pageIndex,
+    Value<DateTime>? createdAt,
+  }) {
     return PagesCompanion(
       id: id ?? this.id,
       documentId: documentId ?? this.documentId,
@@ -704,42 +885,50 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   List<DatabaseSchemaEntity> get allSchemaEntities => [documents, pages];
 }
 
-typedef $$DocumentsTableCreateCompanionBuilder = DocumentsCompanion Function({
-  Value<int> id,
-  required String title,
-  Value<DateTime> createdAt,
-  Value<DateTime> updatedAt,
-  Value<int> pageCount,
-  Value<String?> coverPagePath,
-  Value<bool> isFavourite,
-});
-typedef $$DocumentsTableUpdateCompanionBuilder = DocumentsCompanion Function({
-  Value<int> id,
-  Value<String> title,
-  Value<DateTime> createdAt,
-  Value<DateTime> updatedAt,
-  Value<int> pageCount,
-  Value<String?> coverPagePath,
-  Value<bool> isFavourite,
-});
+typedef $$DocumentsTableCreateCompanionBuilder =
+    DocumentsCompanion Function({
+      Value<int> id,
+      required String title,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> pageCount,
+      Value<String?> coverPagePath,
+      Value<bool> isFavourite,
+      Value<String?> ocrText,
+    });
+typedef $$DocumentsTableUpdateCompanionBuilder =
+    DocumentsCompanion Function({
+      Value<int> id,
+      Value<String> title,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> pageCount,
+      Value<String?> coverPagePath,
+      Value<bool> isFavourite,
+      Value<String?> ocrText,
+    });
 
 final class $$DocumentsTableReferences
     extends BaseReferences<_$AppDatabase, $DocumentsTable, Document> {
   $$DocumentsTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
   static MultiTypedResultKey<$PagesTable, List<Page>> _pagesRefsTable(
-          _$AppDatabase db) =>
-      MultiTypedResultKey.fromTable(db.pages,
-          aliasName:
-              $_aliasNameGenerator(db.documents.id, db.pages.documentId));
+    _$AppDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.pages,
+    aliasName: $_aliasNameGenerator(db.documents.id, db.pages.documentId),
+  );
 
   $$PagesTableProcessedTableManager get pagesRefs {
-    final manager = $$PagesTableTableManager($_db, $_db.pages)
-        .filter((f) => f.documentId.id.sqlEquals($_itemColumn<int>('id')!));
+    final manager = $$PagesTableTableManager(
+      $_db,
+      $_db.pages,
+    ).filter((f) => f.documentId.id.sqlEquals($_itemColumn<int>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_pagesRefsTable($_db));
     return ProcessedTableManager(
-        manager.$state.copyWith(prefetchedData: cache));
+      manager.$state.copyWith(prefetchedData: cache),
+    );
   }
 }
 
@@ -753,44 +942,67 @@ class $$DocumentsTableFilterComposer
     super.$removeJoinBuilderFromRootComposer,
   });
   ColumnFilters<int> get id => $composableBuilder(
-      column: $table.id, builder: (column) => ColumnFilters(column));
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get title => $composableBuilder(
-      column: $table.title, builder: (column) => ColumnFilters(column));
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
-      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
-      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<int> get pageCount => $composableBuilder(
-      column: $table.pageCount, builder: (column) => ColumnFilters(column));
+    column: $table.pageCount,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get coverPagePath => $composableBuilder(
-      column: $table.coverPagePath, builder: (column) => ColumnFilters(column));
+    column: $table.coverPagePath,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<bool> get isFavourite => $composableBuilder(
-      column: $table.isFavourite, builder: (column) => ColumnFilters(column));
+    column: $table.isFavourite,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ocrText => $composableBuilder(
+    column: $table.ocrText,
+    builder: (column) => ColumnFilters(column),
+  );
 
   Expression<bool> pagesRefs(
-      Expression<bool> Function($$PagesTableFilterComposer f) f) {
+    Expression<bool> Function($$PagesTableFilterComposer f) f,
+  ) {
     final $$PagesTableFilterComposer composer = $composerBuilder(
-        composer: this,
-        getCurrentColumn: (t) => t.id,
-        referencedTable: $db.pages,
-        getReferencedColumn: (t) => t.documentId,
-        builder: (joinBuilder,
-                {$addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer}) =>
-            $$PagesTableFilterComposer(
-              $db: $db,
-              $table: $db.pages,
-              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-              joinBuilder: joinBuilder,
-              $removeJoinBuilderFromRootComposer:
-                  $removeJoinBuilderFromRootComposer,
-            ));
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.pages,
+      getReferencedColumn: (t) => t.documentId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PagesTableFilterComposer(
+            $db: $db,
+            $table: $db.pages,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
     return f(composer);
   }
 }
@@ -805,26 +1017,44 @@ class $$DocumentsTableOrderingComposer
     super.$removeJoinBuilderFromRootComposer,
   });
   ColumnOrderings<int> get id => $composableBuilder(
-      column: $table.id, builder: (column) => ColumnOrderings(column));
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get title => $composableBuilder(
-      column: $table.title, builder: (column) => ColumnOrderings(column));
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
-      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
-      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<int> get pageCount => $composableBuilder(
-      column: $table.pageCount, builder: (column) => ColumnOrderings(column));
+    column: $table.pageCount,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get coverPagePath => $composableBuilder(
-      column: $table.coverPagePath,
-      builder: (column) => ColumnOrderings(column));
+    column: $table.coverPagePath,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<bool> get isFavourite => $composableBuilder(
-      column: $table.isFavourite, builder: (column) => ColumnOrderings(column));
+    column: $table.isFavourite,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ocrText => $composableBuilder(
+    column: $table.ocrText,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$DocumentsTableAnnotationComposer
@@ -852,47 +1082,62 @@ class $$DocumentsTableAnnotationComposer
       $composableBuilder(column: $table.pageCount, builder: (column) => column);
 
   GeneratedColumn<String> get coverPagePath => $composableBuilder(
-      column: $table.coverPagePath, builder: (column) => column);
+    column: $table.coverPagePath,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<bool> get isFavourite => $composableBuilder(
-      column: $table.isFavourite, builder: (column) => column);
+    column: $table.isFavourite,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get ocrText =>
+      $composableBuilder(column: $table.ocrText, builder: (column) => column);
 
   Expression<T> pagesRefs<T extends Object>(
-      Expression<T> Function($$PagesTableAnnotationComposer a) f) {
+    Expression<T> Function($$PagesTableAnnotationComposer a) f,
+  ) {
     final $$PagesTableAnnotationComposer composer = $composerBuilder(
-        composer: this,
-        getCurrentColumn: (t) => t.id,
-        referencedTable: $db.pages,
-        getReferencedColumn: (t) => t.documentId,
-        builder: (joinBuilder,
-                {$addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer}) =>
-            $$PagesTableAnnotationComposer(
-              $db: $db,
-              $table: $db.pages,
-              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-              joinBuilder: joinBuilder,
-              $removeJoinBuilderFromRootComposer:
-                  $removeJoinBuilderFromRootComposer,
-            ));
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.pages,
+      getReferencedColumn: (t) => t.documentId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PagesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.pages,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
     return f(composer);
   }
 }
 
-class $$DocumentsTableTableManager extends RootTableManager<
-    _$AppDatabase,
-    $DocumentsTable,
-    Document,
-    $$DocumentsTableFilterComposer,
-    $$DocumentsTableOrderingComposer,
-    $$DocumentsTableAnnotationComposer,
-    $$DocumentsTableCreateCompanionBuilder,
-    $$DocumentsTableUpdateCompanionBuilder,
-    (Document, $$DocumentsTableReferences),
-    Document,
-    PrefetchHooks Function({bool pagesRefs})> {
+class $$DocumentsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DocumentsTable,
+          Document,
+          $$DocumentsTableFilterComposer,
+          $$DocumentsTableOrderingComposer,
+          $$DocumentsTableAnnotationComposer,
+          $$DocumentsTableCreateCompanionBuilder,
+          $$DocumentsTableUpdateCompanionBuilder,
+          (Document, $$DocumentsTableReferences),
+          Document,
+          PrefetchHooks Function({bool pagesRefs})
+        > {
   $$DocumentsTableTableManager(_$AppDatabase db, $DocumentsTable table)
-      : super(TableManagerState(
+    : super(
+        TableManagerState(
           db: db,
           table: table,
           createFilteringComposer: () =>
@@ -901,47 +1146,53 @@ class $$DocumentsTableTableManager extends RootTableManager<
               $$DocumentsTableOrderingComposer($db: db, $table: table),
           createComputedFieldComposer: () =>
               $$DocumentsTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback: ({
-            Value<int> id = const Value.absent(),
-            Value<String> title = const Value.absent(),
-            Value<DateTime> createdAt = const Value.absent(),
-            Value<DateTime> updatedAt = const Value.absent(),
-            Value<int> pageCount = const Value.absent(),
-            Value<String?> coverPagePath = const Value.absent(),
-            Value<bool> isFavourite = const Value.absent(),
-          }) =>
-              DocumentsCompanion(
-            id: id,
-            title: title,
-            createdAt: createdAt,
-            updatedAt: updatedAt,
-            pageCount: pageCount,
-            coverPagePath: coverPagePath,
-            isFavourite: isFavourite,
-          ),
-          createCompanionCallback: ({
-            Value<int> id = const Value.absent(),
-            required String title,
-            Value<DateTime> createdAt = const Value.absent(),
-            Value<DateTime> updatedAt = const Value.absent(),
-            Value<int> pageCount = const Value.absent(),
-            Value<String?> coverPagePath = const Value.absent(),
-            Value<bool> isFavourite = const Value.absent(),
-          }) =>
-              DocumentsCompanion.insert(
-            id: id,
-            title: title,
-            createdAt: createdAt,
-            updatedAt: updatedAt,
-            pageCount: pageCount,
-            coverPagePath: coverPagePath,
-            isFavourite: isFavourite,
-          ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> pageCount = const Value.absent(),
+                Value<String?> coverPagePath = const Value.absent(),
+                Value<bool> isFavourite = const Value.absent(),
+                Value<String?> ocrText = const Value.absent(),
+              }) => DocumentsCompanion(
+                id: id,
+                title: title,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                pageCount: pageCount,
+                coverPagePath: coverPagePath,
+                isFavourite: isFavourite,
+                ocrText: ocrText,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String title,
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> pageCount = const Value.absent(),
+                Value<String?> coverPagePath = const Value.absent(),
+                Value<bool> isFavourite = const Value.absent(),
+                Value<String?> ocrText = const Value.absent(),
+              }) => DocumentsCompanion.insert(
+                id: id,
+                title: title,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                pageCount: pageCount,
+                coverPagePath: coverPagePath,
+                isFavourite: isFavourite,
+                ocrText: ocrText,
+              ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (
-                    e.readTable(table),
-                    $$DocumentsTableReferences(db, table, e)
-                  ))
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$DocumentsTableReferences(db, table, e),
+                ),
+              )
               .toList(),
           prefetchHooksCallback: ({pagesRefs = false}) {
             return PrefetchHooks(
@@ -952,48 +1203,53 @@ class $$DocumentsTableTableManager extends RootTableManager<
                 return [
                   if (pagesRefs)
                     await $_getPrefetchedData<Document, $DocumentsTable, Page>(
-                        currentTable: table,
-                        referencedTable:
-                            $$DocumentsTableReferences._pagesRefsTable(db),
-                        managerFromTypedResult: (p0) =>
-                            $$DocumentsTableReferences(db, table, p0).pagesRefs,
-                        referencedItemsForCurrentItem:
-                            (item, referencedItems) => referencedItems
-                                .where((e) => e.documentId == item.id),
-                        typedResults: items)
+                      currentTable: table,
+                      referencedTable: $$DocumentsTableReferences
+                          ._pagesRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$DocumentsTableReferences(db, table, p0).pagesRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.documentId == item.id),
+                      typedResults: items,
+                    ),
                 ];
               },
             );
           },
-        ));
+        ),
+      );
 }
 
-typedef $$DocumentsTableProcessedTableManager = ProcessedTableManager<
-    _$AppDatabase,
-    $DocumentsTable,
-    Document,
-    $$DocumentsTableFilterComposer,
-    $$DocumentsTableOrderingComposer,
-    $$DocumentsTableAnnotationComposer,
-    $$DocumentsTableCreateCompanionBuilder,
-    $$DocumentsTableUpdateCompanionBuilder,
-    (Document, $$DocumentsTableReferences),
-    Document,
-    PrefetchHooks Function({bool pagesRefs})>;
-typedef $$PagesTableCreateCompanionBuilder = PagesCompanion Function({
-  Value<int> id,
-  required int documentId,
-  required String imagePath,
-  required int pageIndex,
-  Value<DateTime> createdAt,
-});
-typedef $$PagesTableUpdateCompanionBuilder = PagesCompanion Function({
-  Value<int> id,
-  Value<int> documentId,
-  Value<String> imagePath,
-  Value<int> pageIndex,
-  Value<DateTime> createdAt,
-});
+typedef $$DocumentsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DocumentsTable,
+      Document,
+      $$DocumentsTableFilterComposer,
+      $$DocumentsTableOrderingComposer,
+      $$DocumentsTableAnnotationComposer,
+      $$DocumentsTableCreateCompanionBuilder,
+      $$DocumentsTableUpdateCompanionBuilder,
+      (Document, $$DocumentsTableReferences),
+      Document,
+      PrefetchHooks Function({bool pagesRefs})
+    >;
+typedef $$PagesTableCreateCompanionBuilder =
+    PagesCompanion Function({
+      Value<int> id,
+      required int documentId,
+      required String imagePath,
+      required int pageIndex,
+      Value<DateTime> createdAt,
+    });
+typedef $$PagesTableUpdateCompanionBuilder =
+    PagesCompanion Function({
+      Value<int> id,
+      Value<int> documentId,
+      Value<String> imagePath,
+      Value<int> pageIndex,
+      Value<DateTime> createdAt,
+    });
 
 final class $$PagesTableReferences
     extends BaseReferences<_$AppDatabase, $PagesTable, Page> {
@@ -1005,12 +1261,15 @@ final class $$PagesTableReferences
   $$DocumentsTableProcessedTableManager get documentId {
     final $_column = $_itemColumn<int>('document_id')!;
 
-    final manager = $$DocumentsTableTableManager($_db, $_db.documents)
-        .filter((f) => f.id.sqlEquals($_column));
+    final manager = $$DocumentsTableTableManager(
+      $_db,
+      $_db.documents,
+    ).filter((f) => f.id.sqlEquals($_column));
     final item = $_typedResult.readTableOrNull(_documentIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(
-        manager.$state.copyWith(prefetchedData: [item]));
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
   }
 }
 
@@ -1023,34 +1282,45 @@ class $$PagesTableFilterComposer extends Composer<_$AppDatabase, $PagesTable> {
     super.$removeJoinBuilderFromRootComposer,
   });
   ColumnFilters<int> get id => $composableBuilder(
-      column: $table.id, builder: (column) => ColumnFilters(column));
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get imagePath => $composableBuilder(
-      column: $table.imagePath, builder: (column) => ColumnFilters(column));
+    column: $table.imagePath,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<int> get pageIndex => $composableBuilder(
-      column: $table.pageIndex, builder: (column) => ColumnFilters(column));
+    column: $table.pageIndex,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
-      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
 
   $$DocumentsTableFilterComposer get documentId {
     final $$DocumentsTableFilterComposer composer = $composerBuilder(
-        composer: this,
-        getCurrentColumn: (t) => t.documentId,
-        referencedTable: $db.documents,
-        getReferencedColumn: (t) => t.id,
-        builder: (joinBuilder,
-                {$addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer}) =>
-            $$DocumentsTableFilterComposer(
-              $db: $db,
-              $table: $db.documents,
-              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-              joinBuilder: joinBuilder,
-              $removeJoinBuilderFromRootComposer:
-                  $removeJoinBuilderFromRootComposer,
-            ));
+      composer: this,
+      getCurrentColumn: (t) => t.documentId,
+      referencedTable: $db.documents,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DocumentsTableFilterComposer(
+            $db: $db,
+            $table: $db.documents,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
     return composer;
   }
 }
@@ -1065,34 +1335,45 @@ class $$PagesTableOrderingComposer
     super.$removeJoinBuilderFromRootComposer,
   });
   ColumnOrderings<int> get id => $composableBuilder(
-      column: $table.id, builder: (column) => ColumnOrderings(column));
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get imagePath => $composableBuilder(
-      column: $table.imagePath, builder: (column) => ColumnOrderings(column));
+    column: $table.imagePath,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<int> get pageIndex => $composableBuilder(
-      column: $table.pageIndex, builder: (column) => ColumnOrderings(column));
+    column: $table.pageIndex,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
-      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   $$DocumentsTableOrderingComposer get documentId {
     final $$DocumentsTableOrderingComposer composer = $composerBuilder(
-        composer: this,
-        getCurrentColumn: (t) => t.documentId,
-        referencedTable: $db.documents,
-        getReferencedColumn: (t) => t.id,
-        builder: (joinBuilder,
-                {$addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer}) =>
-            $$DocumentsTableOrderingComposer(
-              $db: $db,
-              $table: $db.documents,
-              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-              joinBuilder: joinBuilder,
-              $removeJoinBuilderFromRootComposer:
-                  $removeJoinBuilderFromRootComposer,
-            ));
+      composer: this,
+      getCurrentColumn: (t) => t.documentId,
+      referencedTable: $db.documents,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DocumentsTableOrderingComposer(
+            $db: $db,
+            $table: $db.documents,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
     return composer;
   }
 }
@@ -1120,39 +1401,46 @@ class $$PagesTableAnnotationComposer
 
   $$DocumentsTableAnnotationComposer get documentId {
     final $$DocumentsTableAnnotationComposer composer = $composerBuilder(
-        composer: this,
-        getCurrentColumn: (t) => t.documentId,
-        referencedTable: $db.documents,
-        getReferencedColumn: (t) => t.id,
-        builder: (joinBuilder,
-                {$addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer}) =>
-            $$DocumentsTableAnnotationComposer(
-              $db: $db,
-              $table: $db.documents,
-              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-              joinBuilder: joinBuilder,
-              $removeJoinBuilderFromRootComposer:
-                  $removeJoinBuilderFromRootComposer,
-            ));
+      composer: this,
+      getCurrentColumn: (t) => t.documentId,
+      referencedTable: $db.documents,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DocumentsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.documents,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
     return composer;
   }
 }
 
-class $$PagesTableTableManager extends RootTableManager<
-    _$AppDatabase,
-    $PagesTable,
-    Page,
-    $$PagesTableFilterComposer,
-    $$PagesTableOrderingComposer,
-    $$PagesTableAnnotationComposer,
-    $$PagesTableCreateCompanionBuilder,
-    $$PagesTableUpdateCompanionBuilder,
-    (Page, $$PagesTableReferences),
-    Page,
-    PrefetchHooks Function({bool documentId})> {
+class $$PagesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PagesTable,
+          Page,
+          $$PagesTableFilterComposer,
+          $$PagesTableOrderingComposer,
+          $$PagesTableAnnotationComposer,
+          $$PagesTableCreateCompanionBuilder,
+          $$PagesTableUpdateCompanionBuilder,
+          (Page, $$PagesTableReferences),
+          Page,
+          PrefetchHooks Function({bool documentId})
+        > {
   $$PagesTableTableManager(_$AppDatabase db, $PagesTable table)
-      : super(TableManagerState(
+    : super(
+        TableManagerState(
           db: db,
           table: table,
           createFilteringComposer: () =>
@@ -1161,44 +1449,47 @@ class $$PagesTableTableManager extends RootTableManager<
               $$PagesTableOrderingComposer($db: db, $table: table),
           createComputedFieldComposer: () =>
               $$PagesTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback: ({
-            Value<int> id = const Value.absent(),
-            Value<int> documentId = const Value.absent(),
-            Value<String> imagePath = const Value.absent(),
-            Value<int> pageIndex = const Value.absent(),
-            Value<DateTime> createdAt = const Value.absent(),
-          }) =>
-              PagesCompanion(
-            id: id,
-            documentId: documentId,
-            imagePath: imagePath,
-            pageIndex: pageIndex,
-            createdAt: createdAt,
-          ),
-          createCompanionCallback: ({
-            Value<int> id = const Value.absent(),
-            required int documentId,
-            required String imagePath,
-            required int pageIndex,
-            Value<DateTime> createdAt = const Value.absent(),
-          }) =>
-              PagesCompanion.insert(
-            id: id,
-            documentId: documentId,
-            imagePath: imagePath,
-            pageIndex: pageIndex,
-            createdAt: createdAt,
-          ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> documentId = const Value.absent(),
+                Value<String> imagePath = const Value.absent(),
+                Value<int> pageIndex = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => PagesCompanion(
+                id: id,
+                documentId: documentId,
+                imagePath: imagePath,
+                pageIndex: pageIndex,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int documentId,
+                required String imagePath,
+                required int pageIndex,
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => PagesCompanion.insert(
+                id: id,
+                documentId: documentId,
+                imagePath: imagePath,
+                pageIndex: pageIndex,
+                createdAt: createdAt,
+              ),
           withReferenceMapper: (p0) => p0
-              .map((e) =>
-                  (e.readTable(table), $$PagesTableReferences(db, table, e)))
+              .map(
+                (e) =>
+                    (e.readTable(table), $$PagesTableReferences(db, table, e)),
+              )
               .toList(),
           prefetchHooksCallback: ({documentId = false}) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [],
-              addJoins: <
-                  T extends TableManagerState<
+              addJoins:
+                  <
+                    T extends TableManagerState<
                       dynamic,
                       dynamic,
                       dynamic,
@@ -1209,40 +1500,48 @@ class $$PagesTableTableManager extends RootTableManager<
                       dynamic,
                       dynamic,
                       dynamic,
-                      dynamic>>(state) {
-                if (documentId) {
-                  state = state.withJoin(
-                    currentTable: table,
-                    currentColumn: table.documentId,
-                    referencedTable:
-                        $$PagesTableReferences._documentIdTable(db),
-                    referencedColumn:
-                        $$PagesTableReferences._documentIdTable(db).id,
-                  ) as T;
-                }
+                      dynamic
+                    >
+                  >(state) {
+                    if (documentId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.documentId,
+                                referencedTable: $$PagesTableReferences
+                                    ._documentIdTable(db),
+                                referencedColumn: $$PagesTableReferences
+                                    ._documentIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
 
-                return state;
-              },
+                    return state;
+                  },
               getPrefetchedDataCallback: (items) async {
                 return [];
               },
             );
           },
-        ));
+        ),
+      );
 }
 
-typedef $$PagesTableProcessedTableManager = ProcessedTableManager<
-    _$AppDatabase,
-    $PagesTable,
-    Page,
-    $$PagesTableFilterComposer,
-    $$PagesTableOrderingComposer,
-    $$PagesTableAnnotationComposer,
-    $$PagesTableCreateCompanionBuilder,
-    $$PagesTableUpdateCompanionBuilder,
-    (Page, $$PagesTableReferences),
-    Page,
-    PrefetchHooks Function({bool documentId})>;
+typedef $$PagesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PagesTable,
+      Page,
+      $$PagesTableFilterComposer,
+      $$PagesTableOrderingComposer,
+      $$PagesTableAnnotationComposer,
+      $$PagesTableCreateCompanionBuilder,
+      $$PagesTableUpdateCompanionBuilder,
+      (Page, $$PagesTableReferences),
+      Page,
+      PrefetchHooks Function({bool documentId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;

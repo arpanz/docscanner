@@ -5,8 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 // ---------------------------------------------------------------------------
 // Camera controller provider
 // ---------------------------------------------------------------------------
-class CameraControllerNotifier
-    extends AsyncNotifier<CameraController> {
+class CameraControllerNotifier extends AsyncNotifier<CameraController> {
   CameraController? _ctrl;
 
   @override
@@ -44,8 +43,11 @@ class CameraControllerNotifier
     try {
       final file = await ctrl.takePicture();
       ref.read(capturedImagesProvider.notifier).add(file.path);
+      ref.read(captureErrorProvider.notifier).state =
+          null; // clear any prev error
     } catch (e) {
-      // Silently ignore capture errors — user can retry
+      ref.read(captureErrorProvider.notifier).state =
+          'Capture failed. Try again.';
     }
   }
 
@@ -54,13 +56,13 @@ class CameraControllerNotifier
 
 final cameraControllerProvider =
     AsyncNotifierProvider<CameraControllerNotifier, CameraController>(
-  CameraControllerNotifier.new,
-);
+      CameraControllerNotifier.new,
+    );
 
 // ---------------------------------------------------------------------------
 // Captured images list provider
 // ---------------------------------------------------------------------------
-class CapturedImagesNotifier extends Notifier<List<String>> {
+class CapturedImagesNotifier extends AutoDisposeNotifier<List<String>> {
   @override
   List<String> build() => [];
 
@@ -82,6 +84,9 @@ class CapturedImagesNotifier extends Notifier<List<String>> {
 }
 
 final capturedImagesProvider =
-    NotifierProvider<CapturedImagesNotifier, List<String>>(
-  CapturedImagesNotifier.new,
-);
+    NotifierProvider.autoDispose<CapturedImagesNotifier, List<String>>(
+      CapturedImagesNotifier.new,
+    );
+
+// Error provider for capture failures
+final captureErrorProvider = StateProvider.autoDispose<String?>((ref) => null);

@@ -81,7 +81,7 @@ class _CameraPageState extends ConsumerState<CameraPage>
 
   Future<String?> _promptTitle() async {
     final ctrl = TextEditingController(
-      text: 'Document ${DateTime.now().day}-${DateTime.now().month}-${DateTime.now().year}',
+      text: 'Document ${formatDate(DateTime.now())}',
     );
     return showDialog<String>(
       context: context,
@@ -94,10 +94,13 @@ class _CameraPageState extends ConsumerState<CameraPage>
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-              child: const Text('Save')),
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text('Save'),
+          ),
         ],
       ),
     );
@@ -113,85 +116,97 @@ class _CameraPageState extends ConsumerState<CameraPage>
       body: ctrlAsync.when(
         loading: () => const AppLoading(message: 'Starting camera…'),
         error: (e, _) => Center(
-          child: Text('Camera error: $e',
-              style: const TextStyle(color: Colors.white)),
+          child: Text(
+            'Camera error: $e',
+            style: const TextStyle(color: Colors.white),
+          ),
         ),
-        data: (controller) => Stack(
-          fit: StackFit.expand,
-          children: [
-            // Preview
-            CameraPreview(controller),
+        data: (controller) {
+          // Listen for capture errors
+          ref.listen<String?>(captureErrorProvider, (_, error) {
+            if (error != null && mounted) {
+              showSnackBar(context, error, isError: true);
+            }
+          });
 
-            // Top bar
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white),
-                        onPressed: () => context.pop(),
-                      ),
-                      FlashToggle(controller: controller),
-                      TextButton(
-                        onPressed: captured.isNotEmpty ? _onDone : null,
-                        child: Text(
-                          'Done (${captured.length})',
-                          style: TextStyle(
-                            color: captured.isNotEmpty
-                                ? Colors.white
-                                : Colors.white38,
-                            fontWeight: FontWeight.w600,
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              // Preview
+              RepaintBoundary(child: CameraPreview(controller)),
+
+              // Top bar
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          onPressed: () => context.pop(),
+                        ),
+                        FlashToggle(controller: controller),
+                        TextButton(
+                          onPressed: captured.isNotEmpty ? _onDone : null,
+                          child: Text(
+                            'Done (${captured.length})',
+                            style: TextStyle(
+                              color: captured.isNotEmpty
+                                  ? Colors.white
+                                  : Colors.white38,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              // Bottom controls
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: SafeArea(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ThumbnailStrip(
+                        imagePaths: captured,
+                        onTap: (idx) async {
+                          final updated = await showModalBottomSheet<String>(
+                            context: context,
+                            isScrollControlled: true,
+                            builder: (_) =>
+                                CropEnhanceSheet(imagePath: captured[idx]),
+                          );
+                          if (updated != null) {
+                            ref
+                                .read(capturedImagesProvider.notifier)
+                                .replace(idx, updated);
+                          }
+                        },
                       ),
+                      const SizedBox(height: 16),
+                      CaptureButton(onCapture: _onCapture),
+                      const SizedBox(height: 24),
                     ],
                   ),
                 ),
               ),
-            ),
-
-            // Bottom controls
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ThumbnailStrip(
-                      imagePaths: captured,
-                      onTap: (idx) async {
-                        final updated = await showModalBottomSheet<String>(
-                          context: context,
-                          isScrollControlled: true,
-                          builder: (_) => CropEnhanceSheet(
-                            imagePath: captured[idx],
-                          ),
-                        );
-                        if (updated != null) {
-                          ref
-                              .read(capturedImagesProvider.notifier)
-                              .replace(idx, updated);
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    CaptureButton(onCapture: _onCapture),
-                    const SizedBox(height: 24),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+            ],
+          );
+        },
       ),
     );
   }

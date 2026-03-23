@@ -14,15 +14,16 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
   DocumentsDao(super.db);
 
   // Watch all documents ordered by updatedAt desc
-  Stream<List<Document>> watchAllDocuments() =>
-      (select(documents)..orderBy([(d) => OrderingTerm.desc(d.updatedAt)]))
-          .watch();
+  Stream<List<Document>> watchAllDocuments() => (select(
+    documents,
+  )..orderBy([(d) => OrderingTerm.desc(d.updatedAt)])).watch();
 
   // Watch favourites only
-  Stream<List<Document>> watchFavourites() => (select(documents)
-        ..where((d) => d.isFavourite.equals(true))
-        ..orderBy([(d) => OrderingTerm.desc(d.updatedAt)]))
-      .watch();
+  Stream<List<Document>> watchFavourites() =>
+      (select(documents)
+            ..where((d) => d.isFavourite.equals(true))
+            ..orderBy([(d) => OrderingTerm.desc(d.updatedAt)]))
+          .watch();
 
   // Get single document by id
   Future<Document?> getDocument(int id) =>
@@ -49,14 +50,17 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
 
   // Update page count + cover + updatedAt after any page mutation
   Future<void> refreshDocumentMeta(int docId) async {
-    final pageRows = await (select(pages)
-          ..where((p) => p.documentId.equals(docId))
-          ..orderBy([(p) => OrderingTerm.asc(p.pageIndex)]))
-        .get();
+    final pageRows =
+        await (select(pages)
+              ..where((p) => p.documentId.equals(docId))
+              ..orderBy([(p) => OrderingTerm.asc(p.pageIndex)]))
+            .get();
     await (update(documents)..where((d) => d.id.equals(docId))).write(
       DocumentsCompanion(
         pageCount: Value(pageRows.length),
-        coverPagePath: Value(pageRows.isEmpty ? null : pageRows.first.imagePath),
+        coverPagePath: Value(
+          pageRows.isEmpty ? null : pageRows.first.imagePath,
+        ),
         updatedAt: Value(DateTime.now()),
       ),
     );
@@ -85,13 +89,14 @@ class PagesDao extends DatabaseAccessor<AppDatabase> with _$PagesDaoMixin {
 
   Future<int> insertPage(PagesCompanion entry) => into(pages).insert(entry);
 
-  Future<void> reorderPages(int docId, List<int> orderedIds) async {
-    for (var i = 0; i < orderedIds.length; i++) {
-      await (update(pages)..where((p) => p.id.equals(orderedIds[i]))).write(
-        PagesCompanion(pageIndex: Value(i)),
-      );
-    }
-  }
+  Future<void> reorderPages(int docId, List<int> orderedIds) =>
+      transaction(() async {
+        for (var i = 0; i < orderedIds.length; i++) {
+          await (update(pages)..where((p) => p.id.equals(orderedIds[i]))).write(
+            PagesCompanion(pageIndex: Value(i)),
+          );
+        }
+      });
 
   Future<int> deletePage(int pageId) =>
       (delete(pages)..where((p) => p.id.equals(pageId))).go();
