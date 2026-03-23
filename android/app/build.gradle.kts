@@ -8,7 +8,10 @@ plugins {
 android {
     namespace = "com.example.docscanner"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // Pin to a valid local NDK install. The Flutter-default 28.2 folder on this
+    // machine is incomplete and missing source.properties, which breaks Gradle
+    // during project configuration.
+    ndkVersion = "28.0.12916984"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

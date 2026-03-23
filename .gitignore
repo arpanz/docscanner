@@ -32,6 +32,8 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+/.gradle-user-home/
+/.tmp/
 
 # Symbolication related
 app.*.symbols
