@@ -23,12 +23,21 @@ class SortBar extends ConsumerWidget {
             child: ChoiceChip(
               label: Text(opt.label),
               selected: selected,
+              showCheckmark: false,
+              backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
+              selectedColor: theme.colorScheme.primaryContainer,
+              side: BorderSide(
+                color: selected ? theme.colorScheme.primary.withOpacity(0.5) : theme.colorScheme.outlineVariant.withOpacity(0.5),
+                width: 1,
+              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               onSelected: (_) =>
                   ref.read(sortOptionProvider.notifier).state = opt,
               labelStyle: theme.textTheme.labelMedium?.copyWith(
                 color: selected
-                    ? theme.colorScheme.onSecondaryContainer
+                    ? theme.colorScheme.onPrimaryContainer
                     : theme.colorScheme.onSurfaceVariant,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
               ),
             ),
           );

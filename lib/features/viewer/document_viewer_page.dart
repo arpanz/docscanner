@@ -59,6 +59,10 @@ class _DocumentViewerPageState extends ConsumerState<DocumentViewerPage> {
             backgroundColor: Theme.of(context).colorScheme.surface,
             foregroundColor: Theme.of(context).colorScheme.onSurface,
             scrolledUnderElevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => context.pop(),
+            ),
             title: Text(doc.title),
             iconTheme: IconThemeData(
               color: Theme.of(context).colorScheme.onSurface,

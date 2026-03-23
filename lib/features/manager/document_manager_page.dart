@@ -28,17 +28,33 @@ class DocumentManagerPage extends ConsumerWidget {
         slivers: [
           // Expanding gradient app bar
           SliverAppBar(
-            expandedHeight: 120,
+            expandedHeight: 140,
             pinned: true,
             backgroundColor: theme.colorScheme.surface,
             scrolledUnderElevation: 0,
             flexibleSpace: FlexibleSpaceBar(
               titlePadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-              title: Text(
-                'DocScanner',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  color: theme.colorScheme.onSurface,
-                ),
+              title: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'DocScanner',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      color: theme.colorScheme.onSurface,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  Text(
+                    'Organize your documents',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                      letterSpacing: 0.2,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
               ),
               background: Container(
                 decoration: BoxDecoration(
@@ -46,7 +62,7 @@ class DocumentManagerPage extends ConsumerWidget {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      theme.colorScheme.primary.withOpacity(0.08),
+                      theme.colorScheme.primary.withOpacity(0.12),
                       theme.colorScheme.surface,
                     ],
                   ),
@@ -56,11 +72,24 @@ class DocumentManagerPage extends ConsumerWidget {
             actions: [
               IconButton(
                 icon: const Icon(Icons.tune_rounded),
-                onPressed: () {},
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Settings coming soon')),
+                  );
+                },
               ),
+              IconButton(
+                icon: const Icon(Icons.grid_view_rounded),
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('List view coming soon')),
+                  );
+                },
+              ),
+              const SizedBox(width: 8),
             ],
             bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(112),
+              preferredSize: const Size.fromHeight(132),
               child: Column(
                 children: [
                   Padding(
@@ -164,6 +193,37 @@ class DocumentManagerPage extends ConsumerWidget {
                 }
               },
             ),
+            ListTile(
+              leading: const Icon(Icons.share_outlined),
+              title: const Text('Share'),
+              onTap: () {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Share feature coming soon!')),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.picture_as_pdf_outlined),
+              title: const Text('Export PDF'),
+              onTap: () {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Export feature coming soon!')),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.copy_outlined),
+              title: const Text('Duplicate'),
+              onTap: () {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Duplicate feature coming soon!')),
+                );
+              },
+            ),
+            const Divider(),
             ListTile(
               leading: Icon(Icons.delete_outline,
                   color: Theme.of(context).colorScheme.error),

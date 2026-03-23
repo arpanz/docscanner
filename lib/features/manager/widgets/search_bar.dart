@@ -27,24 +27,37 @@ class _DocSearchBarState extends State<DocSearchBar> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      child: TextField(
-        controller: _ctrl,
-        onChanged: widget.onChanged,
-        textInputAction: TextInputAction.search,
-        decoration: InputDecoration(
-          hintText: 'Search documents…',
-          prefixIcon: const Icon(Icons.search, size: 20),
-          suffixIcon: _ctrl.text.isNotEmpty
-              ? IconButton(
-                  icon: const Icon(Icons.clear, size: 18),
-                  onPressed: () {
-                    _ctrl.clear();
-                    widget.onChanged('');
-                  },
-                )
-              : null,
+      child: Container(
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: cs.outlineVariant.withOpacity(0.5)),
+        ),
+        child: TextField(
+          controller: _ctrl,
+          onChanged: widget.onChanged,
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            hintText: 'Search documents…',
+            hintStyle: TextStyle(color: cs.onSurfaceVariant),
+            prefixIcon: Icon(Icons.search, size: 20, color: cs.primary),
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(vertical: 14),
+            suffixIcon: _ctrl.text.isNotEmpty
+                ? IconButton(
+                    icon: Icon(Icons.clear, size: 18, color: cs.onSurfaceVariant),
+                    onPressed: () {
+                      _ctrl.clear();
+                      widget.onChanged('');
+                    },
+                  )
+                : null,
+          ),
         ),
       ),
     );

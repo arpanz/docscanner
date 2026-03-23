@@ -103,9 +103,17 @@ class _CameraPageState extends ConsumerState<CameraPage> {
   @override
   Widget build(BuildContext context) {
     // Briefly shown while the native scanner is launching
-    return const Scaffold(
+    return Scaffold(
       backgroundColor: Colors.black,
-      body: Center(child: CircularProgressIndicator(color: Color(0xFF5C4BF5))),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.close, color: Colors.white),
+          onPressed: () => context.pop(),
+        ),
+      ),
+      body: const Center(child: CircularProgressIndicator(color: Color(0xFF5C4BF5))),
     );
   }
 }
