@@ -1,5 +1,6 @@
 // lib/shared/services/document_service.dart
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -28,9 +29,15 @@ class DocumentService {
     final docId = await _docsDao.insertDocument(
       DocumentsCompanion(title: Value(title)),
     );
-    await _addPages(docId, imagePaths);
-    await _docsDao.refreshDocumentMeta(docId);
-    return docId;
+    try {
+      await _addPages(docId, imagePaths);
+      await _docsDao.refreshDocumentMeta(docId);
+      return docId;
+    } catch (e) {
+      // Roll back — delete the empty document row
+      await _docsDao.deleteDocument(docId);
+      rethrow;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -94,40 +101,47 @@ class DocumentService {
     int startIndex = 0,
   }) async {
     final dir = await _pagesDir();
+    var successCount = 0;
+
     for (var i = 0; i < imagePaths.length; i++) {
       final src = imagePaths[i];
-
-      // NOTE: We cannot use File(src).exists() here because on Android,
-      // the scanner returns content:// URIs which Dart's File class doesn't understand.
-      // FlutterImageCompress natively handles content URIs.
-
-      // Microsecond timestamp guarantees uniqueness for multi-page scans
       final dest = p.join(
         dir.path,
         '${docId}_${startIndex + i}_${DateTime.now().microsecondsSinceEpoch}.jpg',
       );
-      await _compressAndSave(src, dest);
-      await _pagesDao.insertPage(
-        PagesCompanion(
-          documentId: Value(docId),
-          imagePath: Value(dest),
-          pageIndex: Value(startIndex + i),
-        ),
-      );
+      try {
+        await _compressAndSave(src, dest);
+        await _pagesDao.insertPage(
+          PagesCompanion(
+            documentId: Value(docId),
+            imagePath: Value(dest),
+            pageIndex: Value(startIndex + successCount),
+          ),
+        );
+        successCount++;
+      } catch (e) {
+        // Skip this page — don't crash the whole document
+        debugPrint('Failed to save page $i: $e');
+      }
+    }
+
+    if (successCount == 0) {
+      throw Exception('No pages could be saved — all images failed to process');
     }
   }
 
   Future<void> _compressAndSave(String src, String dest) async {
-    try {
-      final result = await FlutterImageCompress.compressAndGetFile(
-        src,
-        dest,
-        quality: AppConstants.defaultJpegQuality,
-      );
-      if (result == null) throw Exception('compress returned null');
-    } catch (_) {
-      // Fallback: plain file copy
-      await File(src).copy(dest);
+    // FlutterImageCompress handles both file:// paths and content:// URIs on Android
+    final result = await FlutterImageCompress.compressAndGetFile(
+      src,
+      dest,
+      quality: AppConstants.defaultJpegQuality,
+    );
+
+    if (result == null) {
+      // content:// URIs cannot be read by File() directly.
+      // Only reach here if compress truly failed — log and skip.
+      throw Exception('Failed to process image: $src');
     }
   }
 

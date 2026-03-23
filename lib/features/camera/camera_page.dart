@@ -29,15 +29,16 @@ class _CameraPageState extends ConsumerState<CameraPage> {
 
       if (!mounted) return;
 
-      // User cancelled or returned nothing — go back
-      if (result == null || result.images.isEmpty) {
+      // Correct check — result is List<dynamic> directly, no .images property
+      if (result == null || result is! List || result.isEmpty) {
         context.pop();
         return;
       }
 
-      final paths = (result.images as List).cast<String>();
+      // Cast each element to String — these are file paths or content URIs
+      final paths = result.map((e) => e.toString()).toList();
 
-      // Prompt for document title
+      // Prompt title AFTER we have confirmed we have pages
       final title = await _promptTitle();
       if (!mounted) return;
       if (title == null || title.isEmpty) {
@@ -52,6 +53,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
         if (mounted) context.pop();
       } else {
         final docId = await svc.createDocument(title: title, imagePaths: paths);
+        debugPrint('Navigating to: /viewer/$docId');
         if (mounted) context.go('/viewer/$docId');
       }
     } catch (e) {
