@@ -1,6 +1,7 @@
 // lib/features/camera/camera_page.dart
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_doc_scanner/flutter_doc_scanner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -49,7 +50,18 @@ class _CameraPageState extends ConsumerState<CameraPage>
   }
 
   Future<void> _onCapture() async {
-    await ref.read(cameraControllerProvider.notifier).capture();
+    try {
+      final result = await FlutterDocScanner().getScannedDocumentAsImages();
+      if (result != null && result.images.isNotEmpty) {
+        final notifier = ref.read(capturedImagesProvider.notifier);
+        for (final path in result.images) {
+          notifier.add(path);
+        }
+        ref.read(captureErrorProvider.notifier).state = null;
+      }
+    } catch (e) {
+      ref.read(captureErrorProvider.notifier).state = 'Scan failed: $e';
+    }
   }
 
   Future<void> _onDone() async {
