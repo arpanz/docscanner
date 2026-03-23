@@ -24,11 +24,13 @@ class AppRoutes {
 // ---------------------------------------------------------------------------
 // Router provider
 // ---------------------------------------------------------------------------
+final _rootNavigatorKey = GlobalKey<NavigatorState>();
+
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: AppRoutes.manager,
     debugLogDiagnostics: false,
-    navigatorKey: GlobalKey<NavigatorState>(),
+    navigatorKey: _rootNavigatorKey,
     routes: [
       GoRoute(
         path: AppRoutes.manager,

@@ -46,7 +46,7 @@ class PageItem extends StatelessWidget {
                       width: double.infinity,
                       errorBuilder: (ctx, err, _) => Center(
                         child: Text(
-                          'Cannot load image\n${page.imagePath}',
+                          'Cannot load page ${index + 1}',
                           textAlign: TextAlign.center,
                           style: const TextStyle(color: Colors.red, fontSize: 12),
                         ),

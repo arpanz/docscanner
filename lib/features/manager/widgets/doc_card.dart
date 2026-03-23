@@ -3,6 +3,8 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import '../../../core/utils.dart';
 import '../../../database/app_database.dart';
 
@@ -228,10 +230,25 @@ class _PdfThumbnail extends StatelessWidget {
 
   Future<Uint8List?> _renderPdf() async {
     try {
+      final cacheDir = await getTemporaryDirectory();
+      final safeName = '${path.hashCode}_${p.basenameWithoutExtension(path)}.png';
+      final cacheFile = File(p.join(cacheDir.path, 'pdf_thumbnails', safeName));
+
+      if (await cacheFile.exists()) {
+        return await cacheFile.readAsBytes();
+      }
+
       final bytes = await File(path).readAsBytes();
       final rasters = await Printing.raster(bytes, pages: [0], dpi: 72).toList();
       if (rasters.isNotEmpty) {
-        return await rasters.first.toPng();
+        final pngBytes = await rasters.first.toPng();
+        
+        if (!await cacheFile.parent.exists()) {
+          await cacheFile.parent.create(recursive: true);
+        }
+        await cacheFile.writeAsBytes(pngBytes);
+        
+        return pngBytes;
       }
     } catch (e) {
       return null;

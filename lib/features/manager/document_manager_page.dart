@@ -54,7 +54,7 @@ class DocumentManagerPage extends ConsumerWidget {
               const SizedBox(width: 8),
             ],
             bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(132),
+              preferredSize: const Size.fromHeight(112),
               child: Column(
                 children: [
                   Padding(
@@ -139,22 +139,29 @@ class DocumentManagerPage extends ConsumerWidget {
       ),
 
       // Gradient FAB
-      floatingActionButton: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Gallery button
-          FloatingActionButton(
-            heroTag: 'gallery',
-            mini: true,
-            onPressed: () => _pickFromGallery(context, ref),
-            child: const Icon(Icons.photo_library_outlined),
-          ),
-          const SizedBox(width: 12),
-          // Scan button (main)
-          _GradientFAB(
-            onPressed: () => context.push(AppRoutes.camera),
-          ),
-        ],
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Gallery button
+            FloatingActionButton(
+              heroTag: 'gallery',
+              mini: true,
+              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+              foregroundColor: Theme.of(context).colorScheme.primary,
+              elevation: 2,
+              onPressed: () => _pickFromGallery(context, ref),
+              child: const Icon(Icons.photo_library_outlined),
+            ),
+            const SizedBox(width: 12),
+            // Scan button (main)
+            _GradientFAB(
+              onPressed: () => context.push(AppRoutes.camera),
+            ),
+          ],
+        ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
