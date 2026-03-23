@@ -52,31 +52,42 @@ class _DocumentViewerPageState extends ConsumerState<DocumentViewerPage> {
           );
         }
         return Scaffold(
+          backgroundColor: Colors.black,
           appBar: AppBar(
-            title: Text(doc.title),
+            backgroundColor: Colors.black.withOpacity(0.7),
+            foregroundColor: Colors.white,
+            scrolledUnderElevation: 0,
+            title: Text(
+              doc.title,
+              style: const TextStyle(color: Colors.white),
+            ),
+            iconTheme: const IconThemeData(color: Colors.white70),
             actions: [
               // Toggle reorder mode
               IconButton(
-                icon: Icon(_reorderMode ? Icons.check : Icons.reorder),
+                icon: Icon(_reorderMode ? Icons.check : Icons.reorder,
+                    color: Colors.white70),
                 tooltip: _reorderMode ? 'Done reordering' : 'Reorder pages',
                 onPressed: () => setState(() => _reorderMode = !_reorderMode),
               ),
               // Add more pages
               IconButton(
-                icon: const Icon(Icons.add_a_photo_outlined),
+                icon: const Icon(Icons.add_a_photo_outlined,
+                    color: Colors.white70),
                 tooltip: 'Add pages',
                 onPressed: () =>
                     context.push('${AppRoutes.camera}?docId=${widget.docId}'),
               ),
               // Export
               IconButton(
-                icon: const Icon(Icons.ios_share),
+                icon: const Icon(Icons.ios_share, color: Colors.white70),
                 tooltip: 'Export',
                 onPressed: () => _showExport(context, ref, doc),
               ),
               // More options
               PopupMenuButton<_MenuAction>(
                 onSelected: (action) => _handleMenu(context, ref, doc, action),
+                iconColor: Colors.white70,
                 itemBuilder: (_) => const [
                   PopupMenuItem(
                     value: _MenuAction.rename,
@@ -163,24 +174,38 @@ class _DocumentViewerPageState extends ConsumerState<DocumentViewerPage> {
                       },
                     ),
                   ),
-                  // Page counter overlay
+                  // Page counter pill
                   Positioned(
-                    bottom: 16,
+                    bottom: 24,
                     left: 0,
                     right: 0,
                     child: Center(
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 4,
+                          horizontal: 16,
+                          vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(20),
+                          color: Colors.black.withOpacity(0.65),
+                          borderRadius: BorderRadius.circular(30),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.15),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.3),
+                              blurRadius: 12,
+                            ),
+                          ],
                         ),
                         child: Text(
-                          '${_currentPage + 1} / ${pages.length}',
-                          style: const TextStyle(color: Colors.white),
+                          '${_currentPage + 1} • ${pages.length}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            letterSpacing: 0.5,
+                          ),
                         ),
                       ),
                     ),

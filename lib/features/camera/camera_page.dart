@@ -7,7 +7,6 @@ import 'package:go_router/go_router.dart';
 import '../../core/utils.dart';
 import '../../shared/services/document_service.dart';
 import 'camera_providers.dart';
-import 'widgets/capture_button.dart';
 import 'widgets/thumbnail_strip.dart';
 import 'widgets/crop_enhance_sheet.dart';
 
@@ -20,6 +19,9 @@ class CameraPage extends ConsumerStatefulWidget {
 }
 
 class _CameraPageState extends ConsumerState<CameraPage> {
+  static const _brand = Color(0xFF5C4BF5);
+  static const _brandLight = Color(0xFF9B59F5);
+
   Future<void> _onCapture() async {
     try {
       final dynamic result = await FlutterDocScanner()
@@ -94,7 +96,6 @@ class _CameraPageState extends ConsumerState<CameraPage> {
   Widget build(BuildContext context) {
     final captured = ref.watch(capturedImagesProvider);
 
-    // Listen for capture errors
     ref.listen<String?>(captureErrorProvider, (_, error) {
       if (error != null && mounted) {
         showSnackBar(context, error, isError: true);
@@ -102,27 +103,61 @@ class _CameraPageState extends ConsumerState<CameraPage> {
     });
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color(0xFF0A0A12),
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Placeholder instead of CameraPreview
+          // Radial glow background
+          Center(
+            child: Container(
+              width: 320,
+              height: 320,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [_brand.withOpacity(0.18), Colors.transparent],
+                ),
+              ),
+            ),
+          ),
+
+          // Center — scan frame with corner accents
           Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  Icons.document_scanner_outlined,
-                  size: 80,
-                  color: Colors.white.withOpacity(0.2),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Ready to Scan',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.4),
-                    fontSize: 18,
-                    fontWeight: FontWeight.w500,
+                CustomPaint(
+                  painter: _CornerPainter(color: _brand.withOpacity(0.7)),
+                  child: Container(
+                    width: 220,
+                    height: 280,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: _brand.withOpacity(0.25),
+                        width: 1,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.document_scanner_outlined,
+                          size: 48,
+                          color: Colors.white.withOpacity(0.15),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Position document\nwithin frame',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.25),
+                            fontSize: 13,
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -136,36 +171,38 @@ class _CameraPageState extends ConsumerState<CameraPage> {
             right: 0,
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white70,
+                      ),
                       onPressed: () => context.pop(),
                     ),
-                    TextButton(
-                      onPressed: captured.isNotEmpty ? _onDone : null,
-                      child: Text(
-                        'Done (${captured.length})',
-                        style: TextStyle(
-                          color: captured.isNotEmpty
-                              ? Colors.white
-                              : Colors.white38,
-                          fontWeight: FontWeight.w600,
+                    const Spacer(),
+                    if (captured.isNotEmpty)
+                      FilledButton.tonal(
+                        onPressed: _onDone,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _brand.withOpacity(0.25),
+                          foregroundColor: Colors.white,
+                          shape: const StadiumBorder(),
+                        ),
+                        child: Text(
+                          'Save  ${captured.length}',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ),
-                    ),
+                    const SizedBox(width: 8),
                   ],
                 ),
               ),
             ),
           ),
 
-          // Bottom controls
+          // Bottom — thumbnail strip + glowing scan button
           Positioned(
             bottom: 0,
             left: 0,
@@ -174,25 +211,54 @@ class _CameraPageState extends ConsumerState<CameraPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  ThumbnailStrip(
-                    imagePaths: captured,
-                    onTap: (idx) async {
-                      final updated = await showModalBottomSheet<String>(
-                        context: context,
-                        isScrollControlled: true,
-                        builder: (_) =>
-                            CropEnhanceSheet(imagePath: captured[idx]),
-                      );
-                      if (updated != null) {
-                        ref
-                            .read(capturedImagesProvider.notifier)
-                            .replace(idx, updated);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  CaptureButton(onCapture: _onCapture),
+                  if (captured.isNotEmpty)
+                    ThumbnailStrip(
+                      imagePaths: captured,
+                      onTap: (idx) async {
+                        final updated = await showModalBottomSheet<String>(
+                          context: context,
+                          isScrollControlled: true,
+                          builder: (_) =>
+                              CropEnhanceSheet(imagePath: captured[idx]),
+                        );
+                        if (updated != null) {
+                          ref
+                              .read(capturedImagesProvider.notifier)
+                              .replace(idx, updated);
+                        }
+                      },
+                    ),
                   const SizedBox(height: 24),
+                  // Glowing scan button
+                  GestureDetector(
+                    onTap: _onCapture,
+                    child: Container(
+                      width: 76,
+                      height: 76,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: const LinearGradient(
+                          colors: [_brand, _brandLight],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: _brand.withOpacity(0.55),
+                            blurRadius: 28,
+                            spreadRadius: 2,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.document_scanner_rounded,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
                 ],
               ),
             ),
@@ -201,4 +267,45 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       ),
     );
   }
+}
+
+// ── Corner accent painter ─────────────────────────────────────────────────────
+
+class _CornerPainter extends CustomPainter {
+  final Color color;
+  _CornerPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = color
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    const len = 24.0;
+
+    // top-left
+    canvas.drawLine(Offset(0, len), Offset.zero, p);
+    canvas.drawLine(Offset.zero, Offset(len, 0), p);
+    // top-right
+    canvas.drawLine(Offset(size.width - len, 0), Offset(size.width, 0), p);
+    canvas.drawLine(Offset(size.width, 0), Offset(size.width, len), p);
+    // bottom-left
+    canvas.drawLine(Offset(0, size.height - len), Offset(0, size.height), p);
+    canvas.drawLine(Offset(0, size.height), Offset(len, size.height), p);
+    // bottom-right
+    canvas.drawLine(
+      Offset(size.width - len, size.height),
+      Offset(size.width, size.height),
+      p,
+    );
+    canvas.drawLine(
+      Offset(size.width, size.height - len),
+      Offset(size.width, size.height),
+      p,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_CornerPainter old) => old.color != color;
 }

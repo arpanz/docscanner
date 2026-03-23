@@ -21,71 +21,114 @@ class DocumentManagerPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final docsAsync = ref.watch(filteredDocumentsProvider);
     final query = ref.watch(searchQueryProvider);
+    final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('DocScanner'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            onPressed: () {},
+      body: CustomScrollView(
+        slivers: [
+          // Expanding gradient app bar
+          SliverAppBar(
+            expandedHeight: 120,
+            pinned: true,
+            backgroundColor: theme.colorScheme.surface,
+            scrolledUnderElevation: 0,
+            flexibleSpace: FlexibleSpaceBar(
+              titlePadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+              title: Text(
+                'DocScanner',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+              background: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      theme.colorScheme.primary.withOpacity(0.08),
+                      theme.colorScheme.surface,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.tune_rounded),
+                onPressed: () {},
+              ),
+            ],
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(112),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                    child: DocSearchBar(
+                      initialValue: query,
+                      onChanged: (v) =>
+                          ref.read(searchQueryProvider.notifier).state = v,
+                    ),
+                  ),
+                  const SortBar(),
+                ],
+              ),
+            ),
+          ),
+
+          // Document grid
+          docsAsync.when(
+            loading: () => const SliverFillRemaining(child: AppLoading()),
+            error: (e, _) => SliverFillRemaining(
+              child: Center(child: Text('Error: $e')),
+            ),
+            data: (docs) {
+              if (docs.isEmpty) {
+                return SliverFillRemaining(
+                  child: AppEmptyState(
+                    icon: Icons.document_scanner_outlined,
+                    title: query.isEmpty
+                        ? 'No documents yet'
+                        : 'No results for "$query"',
+                    subtitle: query.isEmpty
+                        ? 'Tap the button below to scan your first document.'
+                        : null,
+                  ),
+                );
+              }
+              return SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                sliver: SliverGrid.builder(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 14,
+                    mainAxisSpacing: 14,
+                    childAspectRatio: 0.68,
+                  ),
+                  itemCount: docs.length,
+                  itemBuilder: (ctx, i) => DocCard(
+                    document: docs[i],
+                    onTap: () => context.push(AppRoutes.viewerPath(docs[i].id)),
+                    onLongPress: () =>
+                        _showDocOptions(context, ref, docs[i]),
+                  ),
+                ),
+              );
+            },
           ),
         ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(112),
-          child: Column(
-            children: [
-              DocSearchBar(
-                initialValue: query,
-                onChanged: (v) =>
-                    ref.read(searchQueryProvider.notifier).state = v,
-              ),
-              const SortBar(),
-            ],
-          ),
-        ),
       ),
-      body: docsAsync.when(
-        loading: () => const AppLoading(),
-        error: (e, _) => Center(child: Text('Error: $e')),
-        data: (docs) {
-          if (docs.isEmpty) {
-            return AppEmptyState(
-              icon: Icons.document_scanner_outlined,
-              title: query.isEmpty
-                  ? 'No documents yet'
-                  : 'No results for "$query"',
-              subtitle: query.isEmpty
-                  ? 'Tap the camera button to scan your first document.'
-                  : null,
-            );
-          }
-          return GridView.builder(
-            padding: const EdgeInsets.all(16),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 0.72,
-            ),
-            itemCount: docs.length,
-            itemBuilder: (ctx, i) => DocCard(
-              document: docs[i],
-              onTap: () => context.push(AppRoutes.viewerPath(docs[i].id)),
-              onLongPress: () => _showDocOptions(context, ref, docs[i]),
-            ),
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
+
+      // Gradient FAB
+      floatingActionButton: _GradientFAB(
         onPressed: () => context.push(AppRoutes.camera),
-        child: const Icon(Icons.camera_alt),
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
-  void _showDocOptions(
-      BuildContext context, WidgetRef ref, Document doc) {
+  void _showDocOptions(BuildContext context, WidgetRef ref, Document doc) {
     showModalBottomSheet(
       context: context,
       builder: (ctx) => SafeArea(
@@ -132,8 +175,7 @@ class DocumentManagerPage extends ConsumerWidget {
                 final ok = await confirmDialog(
                   context,
                   title: 'Delete document',
-                  message:
-                      'Delete "${doc.title}"? This cannot be undone.',
+                  message: 'Delete "${doc.title}"? This cannot be undone.',
                 );
                 if (ok) {
                   await ref
@@ -143,6 +185,65 @@ class DocumentManagerPage extends ConsumerWidget {
               },
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Gradient FAB ─────────────────────────────────────────────────────────────
+
+class _GradientFAB extends StatelessWidget {
+  const _GradientFAB({required this.onPressed});
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            cs.primary,
+            Color.lerp(cs.primary, Colors.purpleAccent, 0.5)!,
+          ],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: BorderRadius.circular(32),
+        boxShadow: [
+          BoxShadow(
+            color: cs.primary.withOpacity(0.45),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(32),
+          onTap: onPressed,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.document_scanner_outlined,
+                    color: Colors.white, size: 22),
+                SizedBox(width: 10),
+                Text(
+                  'Scan Document',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
