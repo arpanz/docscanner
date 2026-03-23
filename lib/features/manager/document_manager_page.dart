@@ -29,7 +29,7 @@ class DocumentManagerPage extends ConsumerStatefulWidget {
 
 class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final docsAsync = ref.watch(filteredDocumentsProvider);
     final allDocsAsync = ref.watch(allDocumentsProvider);
     final query = ref.watch(searchQueryProvider);
@@ -163,7 +163,7 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
                   
                   if (isGrid) {
                     return Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, docIndex == docs.length - 1 ? 100 : 0),
+                      padding: EdgeInsets.fromLTRB(16, 8, 16, docIndex == docs.length - 1 ? 100 : 0),
                       child: DocCard(
                         document: doc,
                         onTap: () => context.push(AppRoutes.viewerPath(doc.id)),
