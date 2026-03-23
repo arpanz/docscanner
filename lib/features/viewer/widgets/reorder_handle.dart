@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 /// A drag handle widget used inside ReorderableListView items.
 /// Must be wrapped with ReorderableDragStartListener.
 class ReorderHandle extends StatelessWidget {
-  const ReorderHandle({super.key});
+  const ReorderHandle({super.key, required this.index});
+
+  final int index;
 
   @override
   Widget build(BuildContext context) {
     return ReorderableDragStartListener(
-      index: 0, // index is set by the parent ReorderableListView
+      index: index,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8),
         child: Icon(

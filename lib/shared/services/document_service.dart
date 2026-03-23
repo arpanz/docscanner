@@ -8,7 +8,7 @@ import 'package:path/path.dart' as p;
 
 import '../../core/constants.dart';
 import '../../database/app_database.dart';
-import '../../database/tables.dart';
+import '../../database/daos.dart';
 
 class DocumentService {
   DocumentService(this._ref);
@@ -94,7 +94,7 @@ class DocumentService {
     int startIndex = 0,
   }) async {
     final dir = await _pagesDir();
-    for (var i = 0; i < imagePaths.size; i++) {
+    for (var i = 0; i < imagePaths.length; i++) {
       final src = imagePaths[i];
       final dest = p.join(dir.path, '${docId}_${startIndex + i}.jpg');
       await _compressAndSave(src, dest);
@@ -133,10 +133,6 @@ class DocumentService {
       if (await f.exists()) await f.delete();
     } catch (_) {}
   }
-}
-
-extension on List {
-  int get size => length;
 }
 
 // ---------------------------------------------------------------------------

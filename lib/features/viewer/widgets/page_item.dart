@@ -1,7 +1,7 @@
 // lib/features/viewer/widgets/page_item.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
-import '../../../database/tables.dart';
+import '../../../database/app_database.dart' as db;
 import 'reorder_handle.dart';
 
 class PageItem extends StatelessWidget {
@@ -12,7 +12,7 @@ class PageItem extends StatelessWidget {
     required this.onDelete,
   });
 
-  final Page page;
+  final db.Page page;
   final int index;
   final VoidCallback onDelete;
 
@@ -72,7 +72,7 @@ class PageItem extends StatelessWidget {
           ),
 
           // Drag handle
-          const ReorderHandle(),
+          ReorderHandle(index: index),
         ],
       ),
     );

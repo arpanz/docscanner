@@ -19,8 +19,6 @@ class _CropEnhanceSheetState extends ConsumerState<CropEnhanceSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final screenH = MediaQuery.of(context).size.height;
-
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.85,

@@ -1,9 +1,8 @@
 // lib/features/manager/widgets/doc_card.dart
 import 'dart:io';
+import 'package:docscanner/database/app_database.dart';
 import 'package:flutter/material.dart';
-import '../../../core/constants.dart';
 import '../../../core/utils.dart';
-import '../../../database/tables.dart';
 
 class DocCard extends StatelessWidget {
   const DocCard({
@@ -43,7 +42,7 @@ class DocCard extends StatelessWidget {
                           initials(document.title),
                           style: theme.textTheme.displaySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant
-                                .withOpacity(0.4),
+                                .withValues(alpha: 0.4),
                             fontWeight: FontWeight.w700,
                           ),
                         ),

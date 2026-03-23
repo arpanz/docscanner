@@ -9,7 +9,6 @@ import '../../database/app_database.dart';
 import '../../shared/widgets/app_empty_state.dart';
 import '../../shared/widgets/app_loading.dart';
 import '../../shared/services/document_service.dart';
-import '../../shared/services/pdf_service.dart';
 import 'viewer_providers.dart';
 import 'widgets/page_item.dart';
 import 'widgets/export_sheet.dart';
@@ -75,7 +74,7 @@ class DocumentViewerPage extends ConsumerWidget {
             error: (e, _) => Center(child: Text('Error: $e')),
             data: (pages) {
               if (pages.isEmpty) {
-                return AppEmptyState(
+                return const AppEmptyState(
                   icon: Icons.image_not_supported_outlined,
                   title: 'No pages',
                   subtitle: 'Add pages using the camera button above.',
@@ -154,16 +153,17 @@ class DocumentViewerPage extends ConsumerWidget {
         if (name != null && name.isNotEmpty) {
           await ref.read(documentServiceProvider).renameDocument(docId, name);
         }
+        if (!context.mounted) return;
       case _MenuAction.delete:
         final ok = await confirmDialog(
           context,
           title: 'Delete document',
           message: 'Delete "${doc.title}"? This cannot be undone.',
         );
-        if (ok && context.mounted) {
-          await ref.read(documentServiceProvider).deleteDocument(docId);
-          context.go(AppRoutes.manager);
-        }
+        if (!ok || !context.mounted) return;
+        await ref.read(documentServiceProvider).deleteDocument(docId);
+        if (!context.mounted) return;
+        context.go(AppRoutes.manager);
     }
   }
 }

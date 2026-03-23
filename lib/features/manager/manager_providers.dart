@@ -1,7 +1,6 @@
 // lib/features/manager/manager_providers.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../database/app_database.dart';
-import '../../database/tables.dart';
 
 // ---------------------------------------------------------------------------
 // Sort options

@@ -1,7 +1,6 @@
 // lib/features/viewer/viewer_providers.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../database/app_database.dart';
-import '../../database/tables.dart';
 
 final documentProvider =
     StreamProvider.family<Document?, int>((ref, docId) {

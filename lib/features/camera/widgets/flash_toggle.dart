@@ -25,7 +25,6 @@ class _FlashToggleState extends State<FlashToggle> {
         FlashMode.always => Icons.flash_on,
         FlashMode.off    => Icons.flash_off,
         FlashMode.torch  => Icons.highlight,
-        _                => Icons.flash_auto,
       };
 
   void _cycle() {

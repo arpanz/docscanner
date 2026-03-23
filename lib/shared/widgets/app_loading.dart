@@ -39,7 +39,7 @@ class InlineLoading extends StatelessWidget {
     return SizedBox(
       width: size,
       height: size,
-      child: CircularProgressIndicator.adaptive(strokeWidth: 2),
+      child: const CircularProgressIndicator.adaptive(strokeWidth: 2),
     );
   }
 }
