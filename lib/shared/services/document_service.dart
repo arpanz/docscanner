@@ -131,17 +131,14 @@ class DocumentService {
   }
 
   Future<void> _compressAndSave(String src, String dest) async {
-    // FlutterImageCompress handles both file:// paths and content:// URIs on Android
     final result = await FlutterImageCompress.compressAndGetFile(
       src,
       dest,
       quality: AppConstants.defaultJpegQuality,
     );
-
     if (result == null) {
-      // content:// URIs cannot be read by File() directly.
-      // Only reach here if compress truly failed — log and skip.
-      throw Exception('Failed to process image: $src');
+      // Fallback: plain copy (safe now — src is a real file path)
+      await File(src).copy(dest);
     }
   }
 

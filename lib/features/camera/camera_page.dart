@@ -24,21 +24,19 @@ class _CameraPageState extends ConsumerState<CameraPage> {
 
   Future<void> _scan() async {
     try {
-      final dynamic result = await FlutterDocScanner()
-          .getScannedDocumentAsImages();
+      final ImageScanResult? result = await FlutterDocScanner()
+          .getScannedDocumentAsImages(page: 10); // max pages allowed
 
       if (!mounted) return;
 
-      // Correct check — result is List<dynamic> directly, no .images property
-      if (result == null || result is! List || result.isEmpty) {
+      // User cancelled
+      if (result == null || result.images.isEmpty) {
         context.pop();
         return;
       }
 
-      // Cast each element to String — these are file paths or content URIs
-      final paths = result.map((e) => e.toString()).toList();
+      final paths = result.images; // List<String> — real file paths, not content URIs
 
-      // Prompt title AFTER we have confirmed we have pages
       final title = await _promptTitle();
       if (!mounted) return;
       if (title == null || title.isEmpty) {
@@ -52,9 +50,16 @@ class _CameraPageState extends ConsumerState<CameraPage> {
         await svc.appendPages(widget.existingDocId!, paths);
         if (mounted) context.pop();
       } else {
-        final docId = await svc.createDocument(title: title, imagePaths: paths);
-        debugPrint('Navigating to: /viewer/$docId');
+        final docId = await svc.createDocument(
+          title: title,
+          imagePaths: paths,
+        );
         if (mounted) context.go('/viewer/$docId');
+      }
+    } on DocScanException catch (e) {
+      if (mounted) {
+        showSnackBar(context, 'Scan failed: ${e.message}', isError: true);
+        context.pop();
       }
     } catch (e) {
       if (mounted) {
