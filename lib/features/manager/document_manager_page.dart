@@ -1,5 +1,7 @@
 // lib/features/manager/document_manager_page.dart
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -21,6 +23,7 @@ class DocumentManagerPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final docsAsync = ref.watch(filteredDocumentsProvider);
     final query = ref.watch(searchQueryProvider);
+    final isGrid = ref.watch(isGridViewProvider);
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -28,63 +31,25 @@ class DocumentManagerPage extends ConsumerWidget {
         slivers: [
           // Expanding gradient app bar
           SliverAppBar(
-            expandedHeight: 140,
+            expandedHeight: 100,
             pinned: true,
             backgroundColor: theme.colorScheme.surface,
             scrolledUnderElevation: 0,
-            flexibleSpace: FlexibleSpaceBar(
-              titlePadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-              title: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'DocScanner',
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      color: theme.colorScheme.onSurface,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                  Text(
-                    'Organize your documents',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withOpacity(0.6),
-                      letterSpacing: 0.2,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-              background: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      theme.colorScheme.primary.withOpacity(0.12),
-                      theme.colorScheme.surface,
-                    ],
-                  ),
-                ),
+            title: Text(
+              'DocScanner',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
               ),
             ),
             actions: [
               IconButton(
                 icon: const Icon(Icons.tune_rounded),
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Settings coming soon')),
-                  );
-                },
+                onPressed: () => context.push(AppRoutes.settings),
               ),
               IconButton(
-                icon: const Icon(Icons.grid_view_rounded),
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('List view coming soon')),
-                  );
-                },
+                icon: Icon(isGrid ? Icons.view_list_rounded : Icons.grid_view_rounded),
+                onPressed: () => ref.read(isGridViewProvider.notifier).state = !isGrid,
               ),
               const SizedBox(width: 8),
             ],
@@ -128,21 +93,45 @@ class DocumentManagerPage extends ConsumerWidget {
               }
               return SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-                sliver: SliverGrid.builder(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 14,
-                    mainAxisSpacing: 14,
-                    childAspectRatio: 0.68,
-                  ),
-                  itemCount: docs.length,
-                  itemBuilder: (ctx, i) => DocCard(
-                    document: docs[i],
-                    onTap: () => context.push(AppRoutes.viewerPath(docs[i].id)),
-                    onLongPress: () =>
-                        _showDocOptions(context, ref, docs[i]),
-                  ),
-                ),
+                sliver: isGrid
+                    ? SliverGrid.builder(
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          crossAxisSpacing: 14,
+                          mainAxisSpacing: 14,
+                          childAspectRatio: 0.68,
+                        ),
+                        itemCount: docs.length,
+                        itemBuilder: (ctx, i) => DocCard(
+                          document: docs[i],
+                          onTap: () => context.push(AppRoutes.viewerPath(docs[i].id)),
+                          onLongPress: () =>
+                              _showDocOptions(context, ref, docs[i]),
+                        ),
+                      )
+                    : SliverList.builder(
+                        itemCount: docs.length,
+                        itemBuilder: (ctx, i) => ListTile(
+                          leading: SizedBox(
+                            width: 56,
+                            height: 64,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: docs[i].coverPagePath != null
+                                  ? Image.file(File(docs[i].coverPagePath!), fit: BoxFit.cover)
+                                  : Container(
+                                      color: theme.colorScheme.primary.withOpacity(0.1),
+                                      child: Icon(Icons.description_outlined, color: theme.colorScheme.primary),
+                                    ),
+                            ),
+                          ),
+                          title: Text(docs[i].title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: Text('${docs[i].pageCount} pages · ${relativeDate(docs[i].updatedAt)}'),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => context.push(AppRoutes.viewerPath(docs[i].id)),
+                          onLongPress: () => _showDocOptions(context, ref, docs[i]),
+                        ),
+                      ),
               );
             },
           ),
@@ -150,11 +139,54 @@ class DocumentManagerPage extends ConsumerWidget {
       ),
 
       // Gradient FAB
-      floatingActionButton: _GradientFAB(
-        onPressed: () => context.push(AppRoutes.camera),
+      floatingActionButton: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Gallery button
+          FloatingActionButton(
+            heroTag: 'gallery',
+            mini: true,
+            onPressed: () => _pickFromGallery(context, ref),
+            child: const Icon(Icons.photo_library_outlined),
+          ),
+          const SizedBox(width: 12),
+          // Scan button (main)
+          _GradientFAB(
+            onPressed: () => context.push(AppRoutes.camera),
+          ),
+        ],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
+  }
+
+  Future<void> _pickFromGallery(BuildContext context, WidgetRef ref) async {
+    final picker = ImagePicker();
+    final images = await picker.pickMultiImage(imageQuality: 90);
+    if (images.isEmpty || !context.mounted) return;
+
+    final paths = images.map((x) => x.path).toList();
+    final ctrl = TextEditingController(
+      text: 'Document ${formatDate(DateTime.now())}',
+    );
+    final title = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Name your document'),
+        content: TextField(controller: ctrl, autofocus: true),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('Save')),
+        ],
+      ),
+    );
+    if (title == null || title.isEmpty || !context.mounted) return;
+
+    final docId = await ref.read(documentServiceProvider).createDocument(
+      title: title,
+      imagePaths: paths,
+    );
+    if (context.mounted) context.push(AppRoutes.viewerPath(docId));
   }
 
   void _showDocOptions(BuildContext context, WidgetRef ref, Document doc) {

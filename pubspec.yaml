@@ -27,6 +27,7 @@ dependencies:
   flutter_doc_scanner: ^0.0.18
 
   # Image processing
+  image_picker: ^1.1.2
   image: ^4.2.0
   flutter_image_compress: ^2.3.0
 

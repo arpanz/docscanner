@@ -26,6 +26,8 @@ final sortOptionProvider = StateProvider<SortOption>(
 
 final searchQueryProvider = StateProvider<String>((_) => '');
 
+final isGridViewProvider = StateProvider<bool>((ref) => true);
+
 final allDocumentsProvider = StreamProvider<List<Document>>((ref) {
   return ref.watch(documentsDaoProvider).watchAllDocuments();
 });
