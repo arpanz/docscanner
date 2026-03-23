@@ -19,12 +19,37 @@ class PageItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onDoubleTap: onDelete,
-      child: InteractiveViewer(
-        minScale: 1.0,
-        maxScale: 4.0,
-        child: SizedBox.expand(
-          child: Image.file(File(page.imagePath), fit: BoxFit.contain),
-        ),
+      child: Column(
+        children: [
+          Expanded(
+            child: InteractiveViewer(
+              minScale: 1.0,
+              maxScale: 4.0,
+              child: SizedBox.expand(
+                child: Image.file(
+                  File(page.imagePath),
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+          ),
+          // Page label — makes it clear this is a document viewer, not a photo
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            color: Colors.black,
+            child: Text(
+              'Page ${index + 1}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white54,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

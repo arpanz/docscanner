@@ -96,7 +96,16 @@ class DocumentService {
     final dir = await _pagesDir();
     for (var i = 0; i < imagePaths.length; i++) {
       final src = imagePaths[i];
-      final dest = p.join(dir.path, '${docId}_${startIndex + i}.jpg');
+
+      // NOTE: We cannot use File(src).exists() here because on Android,
+      // the scanner returns content:// URIs which Dart's File class doesn't understand.
+      // FlutterImageCompress natively handles content URIs.
+
+      // Microsecond timestamp guarantees uniqueness for multi-page scans
+      final dest = p.join(
+        dir.path,
+        '${docId}_${startIndex + i}_${DateTime.now().microsecondsSinceEpoch}.jpg',
+      );
       await _compressAndSave(src, dest);
       await _pagesDao.insertPage(
         PagesCompanion(
@@ -109,13 +118,15 @@ class DocumentService {
   }
 
   Future<void> _compressAndSave(String src, String dest) async {
-    final result = await FlutterImageCompress.compressAndGetFile(
-      src,
-      dest,
-      quality: AppConstants.defaultJpegQuality,
-    );
-    if (result == null) {
-      // Fallback: plain copy
+    try {
+      final result = await FlutterImageCompress.compressAndGetFile(
+        src,
+        dest,
+        quality: AppConstants.defaultJpegQuality,
+      );
+      if (result == null) throw Exception('compress returned null');
+    } catch (_) {
+      // Fallback: plain file copy
       await File(src).copy(dest);
     }
   }

@@ -53,41 +53,38 @@ class _DocumentViewerPageState extends ConsumerState<DocumentViewerPage> {
         }
         return Scaffold(
           backgroundColor: Colors.black,
+          extendBodyBehindAppBar: false,
           appBar: AppBar(
-            backgroundColor: Colors.black.withOpacity(0.7),
-            foregroundColor: Colors.white,
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            foregroundColor: Theme.of(context).colorScheme.onSurface,
             scrolledUnderElevation: 0,
-            title: Text(
-              doc.title,
-              style: const TextStyle(color: Colors.white),
+            title: Text(doc.title),
+            iconTheme: IconThemeData(
+              color: Theme.of(context).colorScheme.onSurface,
             ),
-            iconTheme: const IconThemeData(color: Colors.white70),
             actions: [
               // Toggle reorder mode
               IconButton(
-                icon: Icon(_reorderMode ? Icons.check : Icons.reorder,
-                    color: Colors.white70),
+                icon: Icon(_reorderMode ? Icons.check : Icons.reorder),
                 tooltip: _reorderMode ? 'Done reordering' : 'Reorder pages',
                 onPressed: () => setState(() => _reorderMode = !_reorderMode),
               ),
               // Add more pages
               IconButton(
-                icon: const Icon(Icons.add_a_photo_outlined,
-                    color: Colors.white70),
+                icon: const Icon(Icons.add_a_photo_outlined),
                 tooltip: 'Add pages',
                 onPressed: () =>
                     context.push('${AppRoutes.camera}?docId=${widget.docId}'),
               ),
               // Export
               IconButton(
-                icon: const Icon(Icons.ios_share, color: Colors.white70),
+                icon: const Icon(Icons.ios_share),
                 tooltip: 'Export',
                 onPressed: () => _showExport(context, ref, doc),
               ),
               // More options
               PopupMenuButton<_MenuAction>(
                 onSelected: (action) => _handleMenu(context, ref, doc, action),
-                iconColor: Colors.white70,
                 itemBuilder: (_) => const [
                   PopupMenuItem(
                     value: _MenuAction.rename,
