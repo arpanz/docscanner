@@ -24,6 +24,7 @@ class DocumentManagerPage extends ConsumerWidget {
     final docsAsync = ref.watch(filteredDocumentsProvider);
     final query = ref.watch(searchQueryProvider);
     final isGrid = ref.watch(isGridViewProvider);
+    final showFavs = ref.watch(showFavouritesOnlyProvider);
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -42,16 +43,33 @@ class DocumentManagerPage extends ConsumerWidget {
               ),
             ),
             actions: [
+              // Favourites filter toggle
+              IconButton(
+                icon: Icon(
+                  showFavs
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
+                  color: showFavs ? Colors.red : null,
+                ),
+                tooltip: showFavs
+                    ? 'Show all documents'
+                    : 'Show favourites only',
+                onPressed: () => ref
+                    .read(showFavouritesOnlyProvider.notifier)
+                    .state = !showFavs,
+              ),
               IconButton(
                 icon: const Icon(Icons.tune_rounded),
-                onPressed: () => context.push(AppRoutes.settings),
+                onPressed: () =>
+                    context.push(AppRoutes.settings),
               ),
               IconButton(
                 icon: Icon(isGrid
                     ? Icons.view_list_rounded
                     : Icons.grid_view_rounded),
-                onPressed: () =>
-                    ref.read(isGridViewProvider.notifier).state = !isGrid,
+                onPressed: () => ref
+                    .read(isGridViewProvider.notifier)
+                    .state = !isGrid,
               ),
               const SizedBox(width: 8),
             ],
@@ -60,11 +78,13 @@ class DocumentManagerPage extends ConsumerWidget {
               child: Column(
                 children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                    padding:
+                        const EdgeInsets.fromLTRB(16, 0, 16, 4),
                     child: DocSearchBar(
                       initialValue: query,
-                      onChanged: (v) =>
-                          ref.read(searchQueryProvider.notifier).state = v,
+                      onChanged: (v) => ref
+                          .read(searchQueryProvider.notifier)
+                          .state = v,
                     ),
                   ),
                   const SortBar(),
@@ -73,8 +93,8 @@ class DocumentManagerPage extends ConsumerWidget {
             ),
           ),
           docsAsync.when(
-            loading: () =>
-                const SliverFillRemaining(child: AppLoading()),
+            loading: () => const SliverFillRemaining(
+                child: AppLoading()),
             error: (e, _) => SliverFillRemaining(
               child: Center(child: Text('Error: $e')),
             ),
@@ -83,20 +103,22 @@ class DocumentManagerPage extends ConsumerWidget {
                 return SliverFillRemaining(
                   child: AppEmptyState(
                     icon: Icons.document_scanner_outlined,
-                    title: query.isEmpty
-                        ? 'No documents yet'
-                        : 'No results for "$query"',
-                    subtitle: query.isEmpty
-                        ? 'Tap the button below to scan your first document.'
-                        : null,
+                    title: showFavs
+                        ? 'No favourites yet'
+                        : query.isEmpty
+                            ? 'No documents yet'
+                            : 'No results for "$query"',
+                    subtitle: showFavs
+                        ? 'Tap the heart icon on a document to favourite it.'
+                        : query.isEmpty
+                            ? 'Tap the button below to scan your first document.'
+                            : null,
                   ),
                 );
               }
               return SliverPadding(
-                // bottom: 120 gives extra clearance for the FAB row
-                // on small screens
-                padding:
-                    const EdgeInsets.fromLTRB(16, 8, 16, 120),
+                padding: const EdgeInsets.fromLTRB(
+                    16, 8, 16, 120),
                 sliver: isGrid
                     ? SliverGrid.builder(
                         gridDelegate:
@@ -109,12 +131,12 @@ class DocumentManagerPage extends ConsumerWidget {
                         itemCount: docs.length,
                         itemBuilder: (ctx, i) => DocCard(
                           document: docs[i],
-                          // Include route + index in tag to prevent collision
-                          heroTag: 'manager_doc_${docs[i].id}',
-                          onTap: () => context
-                              .push(AppRoutes.folderPath(docs[i].id)),
-                          onLongPress: () =>
-                              _showDocOptions(context, ref, docs[i]),
+                          heroTag:
+                              'manager_doc_${docs[i].id}',
+                          onTap: () => context.push(
+                              AppRoutes.folderPath(docs[i].id)),
+                          onLongPress: () => _showDocOptions(
+                              context, ref, docs[i]),
                         ),
                       )
                     : SliverList.builder(
@@ -124,29 +146,36 @@ class DocumentManagerPage extends ConsumerWidget {
                             width: 56,
                             height: 64,
                             child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: docs[i].coverImagePath != null
+                              borderRadius:
+                                  BorderRadius.circular(8),
+                              child: docs[i].coverImagePath !=
+                                      null
                                   ? Image.file(
-                                      File(docs[i].coverImagePath!),
+                                      File(docs[i]
+                                          .coverImagePath!),
                                       fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) =>
-                                          Container(
-                                            color: theme.colorScheme
-                                                .primary
-                                                .withOpacity(0.1),
-                                            child: Icon(
-                                              Icons.description_outlined,
-                                              color: theme
-                                                  .colorScheme.primary,
-                                            ),
-                                          ),
+                                      errorBuilder:
+                                          (_, __, ___) =>
+                                              Container(
+                                        color: theme
+                                            .colorScheme.primary
+                                            .withOpacity(0.1),
+                                        child: Icon(
+                                          Icons
+                                              .description_outlined,
+                                          color: theme.colorScheme
+                                              .primary,
+                                        ),
+                                      ),
                                     )
                                   : Container(
-                                      color: theme.colorScheme.primary
+                                      color: theme.colorScheme
+                                          .primary
                                           .withOpacity(0.1),
                                       child: Icon(
                                         Icons.description_outlined,
-                                        color: theme.colorScheme.primary,
+                                        color:
+                                            theme.colorScheme.primary,
                                       ),
                                     ),
                             ),
@@ -156,15 +185,15 @@ class DocumentManagerPage extends ConsumerWidget {
                             style: const TextStyle(
                                 fontWeight: FontWeight.w600),
                           ),
-                          // 'images' consistent with sort chip label
                           subtitle: Text(
                             '${docs[i].imageCount} images · ${relativeDate(docs[i].updatedAt)}',
                           ),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () => context
-                              .push(AppRoutes.folderPath(docs[i].id)),
-                          onLongPress: () =>
-                              _showDocOptions(context, ref, docs[i]),
+                          trailing:
+                              const Icon(Icons.chevron_right),
+                          onTap: () => context.push(
+                              AppRoutes.folderPath(docs[i].id)),
+                          onLongPress: () => _showDocOptions(
+                              context, ref, docs[i]),
                         ),
                       ),
               );
@@ -181,16 +210,19 @@ class DocumentManagerPage extends ConsumerWidget {
             FloatingActionButton(
               heroTag: 'gallery_fab',
               mini: true,
-              backgroundColor:
-                  Theme.of(context).colorScheme.surfaceContainerHigh,
-              foregroundColor: Theme.of(context).colorScheme.primary,
+              backgroundColor: theme.colorScheme
+                  .surfaceContainerHigh,
+              foregroundColor: theme.colorScheme.primary,
               elevation: 2,
-              onPressed: () => _pickFromGallery(context, ref),
-              child: const Icon(Icons.photo_library_outlined),
+              onPressed: () =>
+                  _pickFromGallery(context, ref),
+              child: const Icon(
+                  Icons.photo_library_outlined),
             ),
             const SizedBox(width: 12),
             _GradientFAB(
-              onPressed: () => context.push(AppRoutes.camera),
+              onPressed: () =>
+                  context.push(AppRoutes.camera),
             ),
           ],
         ),
@@ -203,7 +235,8 @@ class DocumentManagerPage extends ConsumerWidget {
   Future<void> _pickFromGallery(
       BuildContext context, WidgetRef ref) async {
     final picker = ImagePicker();
-    final images = await picker.pickMultiImage(imageQuality: 90);
+    final images =
+        await picker.pickMultiImage(imageQuality: 90);
     if (images.isEmpty || !context.mounted) return;
 
     final paths = images.map((x) => x.path).toList();
@@ -214,7 +247,8 @@ class DocumentManagerPage extends ConsumerWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Name your document'),
-        content: TextField(controller: ctrl, autofocus: true),
+        content:
+            TextField(controller: ctrl, autofocus: true),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx),
@@ -226,7 +260,9 @@ class DocumentManagerPage extends ConsumerWidget {
         ],
       ),
     );
-    if (title == null || title.isEmpty || !context.mounted) return;
+    if (title == null ||
+        title.isEmpty ||
+        !context.mounted) return;
 
     try {
       final docId =
@@ -255,22 +291,24 @@ class DocumentManagerPage extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading:
-                  const Icon(Icons.drive_file_rename_outline),
+              leading: const Icon(
+                  Icons.drive_file_rename_outline),
               title: const Text('Rename'),
               onTap: () async {
                 Navigator.pop(sheetCtx);
-                final ctrl =
-                    TextEditingController(text: doc.title);
+                final ctrl = TextEditingController(
+                    text: doc.title);
                 final name = await showDialog<String>(
                   context: context,
                   builder: (d) => AlertDialog(
                     title: const Text('Rename document'),
                     content: TextField(
-                        controller: ctrl, autofocus: true),
+                        controller: ctrl,
+                        autofocus: true),
                     actions: [
                       TextButton(
-                          onPressed: () => Navigator.pop(d),
+                          onPressed: () =>
+                              Navigator.pop(d),
                           child: const Text('Cancel')),
                       FilledButton(
                           onPressed: () => Navigator.pop(
@@ -286,7 +324,8 @@ class DocumentManagerPage extends ConsumerWidget {
                         .renameDocument(doc.id, name);
                   } catch (e) {
                     messenger.showSnackBar(SnackBar(
-                      content: Text('Failed to rename: $e'),
+                      content:
+                          Text('Failed to rename: $e'),
                       backgroundColor: Colors.red,
                     ));
                   }
@@ -296,11 +335,13 @@ class DocumentManagerPage extends ConsumerWidget {
             const Divider(),
             ListTile(
               leading: Icon(Icons.delete_outline,
-                  color: Theme.of(context).colorScheme.error),
+                  color:
+                      Theme.of(context).colorScheme.error),
               title: Text('Delete',
                   style: TextStyle(
-                      color:
-                          Theme.of(context).colorScheme.error)),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .error)),
               onTap: () async {
                 Navigator.pop(sheetCtx);
                 final ok = await confirmDialog(
@@ -316,7 +357,8 @@ class DocumentManagerPage extends ConsumerWidget {
                         .deleteDocument(doc.id);
                   } catch (e) {
                     messenger.showSnackBar(SnackBar(
-                      content: Text('Failed to delete: $e'),
+                      content:
+                          Text('Failed to delete: $e'),
                       backgroundColor: Colors.red,
                     ));
                   }
@@ -330,9 +372,6 @@ class DocumentManagerPage extends ConsumerWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Gradient FAB
-// ---------------------------------------------------------------------------
 class _GradientFAB extends StatelessWidget {
   const _GradientFAB({required this.onPressed});
   final VoidCallback onPressed;
@@ -345,7 +384,8 @@ class _GradientFAB extends StatelessWidget {
         gradient: LinearGradient(
           colors: [
             cs.primary,
-            Color.lerp(cs.primary, Colors.purpleAccent, 0.5)!,
+            Color.lerp(
+                cs.primary, Colors.purpleAccent, 0.5)!,
           ],
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,

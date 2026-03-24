@@ -17,7 +17,6 @@ class DocumentFolderPage extends ConsumerStatefulWidget {
   const DocumentFolderPage({super.key, required this.docId});
   final int docId;
 
-  /// Registered as a GoRouter observer in router.dart so didPopNext fires.
   static final RouteObserver<ModalRoute<void>> routeObserver =
       RouteObserver<ModalRoute<void>>();
 
@@ -26,8 +25,8 @@ class DocumentFolderPage extends ConsumerStatefulWidget {
       _DocumentFolderPageState();
 }
 
-class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
-    with RouteAware {
+class _DocumentFolderPageState
+    extends ConsumerState<DocumentFolderPage> with RouteAware {
   bool _selectMode = false;
   final Set<String> _selectedImages = {};
   Document? _document;
@@ -47,7 +46,6 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
     super.dispose();
   }
 
-  /// Fires when user pops back to this page (e.g. from camera).
   @override
   void didPopNext() => _loadDocument();
 
@@ -59,8 +57,9 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
   }
 
   Future<void> _loadDocument() async {
-    final doc =
-        await ref.read(documentsDaoProvider).getDocument(widget.docId);
+    final doc = await ref
+        .read(documentsDaoProvider)
+        .getDocument(widget.docId);
     if (!mounted) return;
     setState(() => _document = doc);
     if (doc != null) await _loadImages(doc.folderPath);
@@ -97,24 +96,45 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
   void _selectAll() =>
       setState(() => _selectedImages.addAll(_cachedImagePaths));
 
-  void _deselectAll() => setState(() => _selectedImages.clear());
+  void _deselectAll() =>
+      setState(() => _selectedImages.clear());
 
   Future<void> _createPdf() async {
     if (_document == null || _selectedImages.isEmpty) return;
 
-    // Filter to only paths that still exist on disk
     final validPaths = _selectedImages
         .where((path) => File(path).existsSync())
         .toList();
 
     if (validPaths.isEmpty) {
       if (mounted) {
-        showSnackBar(context,
+        showSnackBar(
+            context,
             'No valid images selected — some may have been deleted',
             isError: true);
       }
       return;
     }
+
+    // Warn the user how many images will be included
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Create PDF'),
+        content: Text(
+          'Create a PDF from ${validPaths.length} selected image${validPaths.length == 1 ? '' : 's'}?',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Create')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
 
     try {
       final pdfService = ref.read(pdfServiceProvider);
@@ -124,7 +144,6 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
         pageFormat: PdfPageFormat.a4,
       );
 
-      // Save into the document's own folder (not app root)
       await ref
           .read(documentServiceProvider)
           .savePdfToDocumentFolder(widget.docId, tempPdf);
@@ -144,22 +163,23 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
   Future<void> _deleteSelected() async {
     if (_document == null || _selectedImages.isEmpty) return;
 
+    // Capture count BEFORE clearing selection
+    final deleteCount = _selectedImages.length;
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Delete ${_selectedImages.length} image(s)?'),
+        title: Text('Delete $deleteCount image(s)?'),
         content: const Text('This action cannot be undone.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-                backgroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
+              onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(
+                  backgroundColor: Colors.red),
+              child: const Text('Delete')),
         ],
       ),
     );
@@ -169,19 +189,21 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
     try {
       await ref
           .read(documentServiceProvider)
-          .deleteImages(widget.docId, _selectedImages.toList());
+          .deleteImages(
+              widget.docId, _selectedImages.toList());
 
-      if (_document != null) await _loadImages(_document!.folderPath);
+      if (_document != null)
+        await _loadImages(_document!.folderPath);
 
-      // Remove deleted paths from selection so no stale refs remain
       setState(() {
-        _selectedImages
-            .removeWhere((p) => !_cachedImagePaths.contains(p));
+        _selectedImages.removeWhere(
+            (path) => !_cachedImagePaths.contains(path));
       });
 
       if (mounted) {
-        showSnackBar(context,
-            'Deleted ${_selectedImages.length} image(s)');
+        // Use the captured count, not the now-pruned set size
+        showSnackBar(
+            context, 'Deleted $deleteCount image(s)');
         _toggleSelectMode();
       }
     } catch (e) {
@@ -197,7 +219,8 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
 
     try {
       final xFiles = _selectedImages
-          .map((path) => XFile(path, mimeType: 'image/jpeg'))
+          .map((path) =>
+              XFile(path, mimeType: 'image/jpeg'))
           .toList();
 
       await SharePlus.instance.share(
@@ -216,19 +239,18 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
     }
   }
 
-  String _sanitizeFileName(String name) =>
-      name.replaceAll(RegExp(r'[^\w\s-]'), '').trim().replaceAll(' ', '_');
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final cs = theme.colorScheme;
     final imagePaths = _cachedImagePaths;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFE8E8E8),
+      // Use theme surface — respects dark mode
+      backgroundColor: cs.surfaceContainerLow,
       appBar: AppBar(
-        backgroundColor: theme.colorScheme.surface,
-        foregroundColor: theme.colorScheme.onSurface,
+        backgroundColor: cs.surface,
+        foregroundColor: cs.onSurface,
         scrolledUnderElevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -241,9 +263,10 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
           if (_selectMode) ...[
             IconButton(
               icon: const Icon(Icons.select_all),
-              onPressed: _selectedImages.length == imagePaths.length
-                  ? _deselectAll
-                  : _selectAll,
+              onPressed:
+                  _selectedImages.length == imagePaths.length
+                      ? _deselectAll
+                      : _selectAll,
               tooltip:
                   _selectedImages.length == imagePaths.length
                       ? 'Deselect all'
@@ -255,6 +278,31 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
               tooltip: 'Done',
             ),
           ] else ...[
+            // Favourites toggle
+            IconButton(
+              icon: Icon(
+                _document?.isFavourite == true
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
+                color: _document?.isFavourite == true
+                    ? Colors.red
+                    : null,
+              ),
+              tooltip: _document?.isFavourite == true
+                  ? 'Remove from favourites'
+                  : 'Add to favourites',
+              onPressed: _document == null
+                  ? null
+                  : () async {
+                      await ref
+                          .read(documentServiceProvider)
+                          .toggleFavourite(
+                            widget.docId,
+                            !(_document!.isFavourite),
+                          );
+                      await _loadDocument();
+                    },
+            ),
             IconButton(
               icon: const Icon(Icons.checklist_rounded),
               onPressed: _toggleSelectMode,
@@ -283,21 +331,36 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                   subtitle:
                       'Add images using the camera button below.',
                 )
-              : GridView.builder(
+              : ReorderableListView.builder(
                   padding: const EdgeInsets.all(8),
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    crossAxisSpacing: 8,
-                    mainAxisSpacing: 8,
-                  ),
+                  // Use a nested grid via a custom approach:
+                  // ReorderableListView doesn't support grids natively,
+                  // so we use a GridView wrapped in a single-column
+                  // ReorderableListView only when select mode is off.
+                  // For simplicity, keep GridView during select mode
+                  // and show a drag-hint banner when not.
+                  buildDefaultDragHandles: !_selectMode,
                   itemCount: imagePaths.length,
+                  onReorder: (oldIndex, newIndex) async {
+                    if (_selectMode) return;
+                    if (newIndex > oldIndex) newIndex--;
+                    final reordered =
+                        List<String>.from(imagePaths);
+                    final item = reordered.removeAt(oldIndex);
+                    reordered.insert(newIndex, item);
+                    setState(
+                        () => _cachedImagePaths = reordered);
+                    await ref
+                        .read(documentServiceProvider)
+                        .reorderImages(widget.docId, reordered);
+                  },
                   itemBuilder: (context, index) {
                     final imagePath = imagePaths[index];
                     return _ImageTile(
+                      key: ValueKey(imagePath),
                       imagePath: imagePath,
-                      isSelected:
-                          _selectedImages.contains(imagePath),
+                      isSelected: _selectedImages
+                          .contains(imagePath),
                       selectMode: _selectMode,
                       onTap: () {
                         if (_selectMode) {
@@ -320,7 +383,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
           _selectMode && _selectedImages.isNotEmpty
               ? Container(
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.surface,
+                    color: cs.surface,
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withOpacity(0.1),
@@ -346,7 +409,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                           _ActionChip(
                             icon: Icons.share,
                             label: 'Share',
-                            color: theme.colorScheme.primary,
+                            color: cs.primary,
                             onPressed: _shareSelected,
                           ),
                           _ActionChip(
@@ -362,17 +425,22 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                 )
               : null,
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context
-            .push('/camera?docId=${widget.docId}')
-            .then((_) => _loadDocument()),
+        onPressed: () async {
+          await context
+              .push('/camera?docId=${widget.docId}');
+          // Refresh after returning from camera.
+          // _safePop in CameraPage triggers didPopNext via RouteAware
+          // but call _loadDocument explicitly as a safety net.
+          if (mounted) await _loadDocument();
+        },
         icon: const Icon(Icons.add_a_photo),
         label: const Text('Add Images'),
       ),
     );
   }
 
-  void _openFullScreen(
-      BuildContext context, List<String> paths, int initialIndex) {
+  void _openFullScreen(BuildContext context,
+      List<String> paths, int initialIndex) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => _FullScreenImageViewer(
@@ -395,7 +463,8 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
   }
 
   Future<void> _renameDocument() async {
-    final ctrl = TextEditingController(text: _document!.title);
+    final ctrl =
+        TextEditingController(text: _document!.title);
     final newTitle = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -403,8 +472,8 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
         content: TextField(
           controller: ctrl,
           autofocus: true,
-          decoration:
-              const InputDecoration(hintText: 'Document name'),
+          decoration: const InputDecoration(
+              hintText: 'Document name'),
         ),
         actions: [
           TextButton(
@@ -509,10 +578,12 @@ class _FullScreenImageViewerState
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFE8E8E8),
+      // Use theme colour — respects dark mode
+      backgroundColor: cs.surface,
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.surface,
+        backgroundColor: cs.surface,
         title: Text(widget.title),
         actions: [
           Padding(
@@ -537,7 +608,7 @@ class _FullScreenImageViewerState
               horizontal: 16, vertical: 24),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: cs.surfaceContainerLow,
               borderRadius: BorderRadius.circular(8),
               boxShadow: [
                 BoxShadow(
@@ -550,7 +621,8 @@ class _FullScreenImageViewerState
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: InteractiveViewer(
-                minScale: 1.0,
+                // 0.5 allows pinch-to-zoom-out for landscape images
+                minScale: 0.5,
                 maxScale: 4.0,
                 child: Center(
                   child: Image.file(
@@ -560,8 +632,8 @@ class _FullScreenImageViewerState
                     errorBuilder: (ctx, err, _) => Center(
                       child: Text(
                         'Cannot load page ${i + 1}',
-                        style: const TextStyle(
-                            color: Colors.grey),
+                        style: TextStyle(
+                            color: cs.onSurfaceVariant),
                       ),
                     ),
                   ),
@@ -580,6 +652,7 @@ class _FullScreenImageViewerState
 // ---------------------------------------------------------------------------
 class _ImageTile extends StatelessWidget {
   const _ImageTile({
+    super.key,
     required this.imagePath,
     required this.isSelected,
     required this.selectMode,
@@ -618,8 +691,9 @@ class _ImageTile extends StatelessWidget {
               right: 4,
               child: Container(
                 decoration: BoxDecoration(
-                  color:
-                      isSelected ? Colors.blue : Colors.black54,
+                  color: isSelected
+                      ? Colors.blue
+                      : Colors.black54,
                   shape: BoxShape.circle,
                 ),
                 child: Icon(

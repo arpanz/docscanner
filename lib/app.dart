@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:docscanner/core/router.dart';
 import 'package:docscanner/core/theme.dart';
@@ -13,8 +14,13 @@ class DocScannerApp extends ConsumerWidget {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && router.canPop()) {
-          router.pop();
+        if (!didPop) {
+          if (router.canPop()) {
+            router.pop();
+          } else {
+            // On the root screen — exit the app on Android back press
+            SystemNavigator.pop();
+          }
         }
       },
       child: MaterialApp.router(

@@ -26,9 +26,8 @@ class _CameraPageState extends ConsumerState<CameraPage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _requestPermissionsAndScan(),
-    );
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _requestPermissionsAndScan());
   }
 
   void _safePop() {
@@ -41,29 +40,22 @@ class _CameraPageState extends ConsumerState<CameraPage> {
     final hasCamera = await permissionService.requestCamera();
     if (!hasCamera) {
       if (!mounted) return;
-      showSnackBar(
-        context,
-        'Camera permission is required to scan documents',
-        isError: true,
-      );
+      showSnackBar(context,
+          'Camera permission is required to scan documents',
+          isError: true);
       _safePop();
       return;
     }
 
-    // Only request legacy storage on Android 12 and below.
-    // Android 13+ removed READ_EXTERNAL_STORAGE — requesting it
-    // causes an automatic denial that blocks the scan flow.
     if (Platform.isAndroid) {
       final needsStorage = await _needsStoragePermission();
       if (needsStorage) {
         final hasStorage = await permissionService.requestStorage();
         if (!hasStorage) {
           if (!mounted) return;
-          showSnackBar(
-            context,
-            'Storage permission is required to save scanned documents',
-            isError: true,
-          );
+          showSnackBar(context,
+              'Storage permission is required to save scanned documents',
+              isError: true);
           _safePop();
           return;
         }
@@ -73,7 +65,6 @@ class _CameraPageState extends ConsumerState<CameraPage> {
     if (mounted) await _scan();
   }
 
-  /// Returns true only on Android API <=32 where storage permission is needed.
   Future<bool> _needsStoragePermission() async {
     final status = await Permission.storage.status;
     return status.isDenied;
@@ -81,8 +72,8 @@ class _CameraPageState extends ConsumerState<CameraPage> {
 
   Future<void> _scan() async {
     try {
-      final PdfScanResult? result = await FlutterDocScanner()
-          .getScannedDocumentAsPdf(page: 10);
+      final PdfScanResult? result =
+          await FlutterDocScanner().getScannedDocumentAsPdf(page: 10);
 
       if (!mounted) return;
       if (result == null) {
@@ -111,12 +102,12 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       );
 
       if (mounted) {
-        // Use go() for absolute navigation — safe regardless of stack state
         context.go(AppRoutes.folderPath(docId));
       }
     } on DocScanException catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Scan failed: ${e.message}', isError: true);
+        showSnackBar(context, 'Scan failed: ${e.message}',
+            isError: true);
         _safePop();
       }
     } catch (e) {
@@ -127,8 +118,6 @@ class _CameraPageState extends ConsumerState<CameraPage> {
     }
   }
 
-  /// Appends scanned PDF pages as images to an existing document.
-  /// Rasters the PDF into individual JPEGs so getDocumentImages() can find them.
   Future<void> _appendToExistingDocument(
     DocumentService svc,
     String pdfPath,
@@ -147,22 +136,23 @@ class _CameraPageState extends ConsumerState<CameraPage> {
     }
 
     try {
-      // Raster each PDF page to a JPEG so the image folder can display them
       final pdfBytes = await File(cleanPath).readAsBytes();
       final tempDir = await getTemporaryDirectory();
       final imagePaths = <String>[];
 
+      // Use timestamp prefix to avoid name collision on concurrent appends
+      final prefix = DateTime.now().millisecondsSinceEpoch;
       final rasters = Printing.raster(pdfBytes, dpi: 150);
       int pageIndex = 0;
       await for (final page in rasters) {
         final png = await page.toPng();
-        final outPath = p.join(tempDir.path, 'scan_append_${pageIndex++}.png');
+        final outPath = p.join(
+            tempDir.path, 'scan_append_${prefix}_${pageIndex++}.png');
         await File(outPath).writeAsBytes(png);
         imagePaths.add(outPath);
       }
 
       if (imagePaths.isEmpty) {
-        // Fallback: save PDF directly if rasterisation yields nothing
         await svc.addImages(widget.existingDocId!, [cleanPath]);
       } else {
         await svc.addImages(widget.existingDocId!, imagePaths);
@@ -174,14 +164,14 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Failed to add pages: $e', isError: true);
+        showSnackBar(context, 'Failed to add pages: $e',
+            isError: true);
         _safePop();
       }
     }
   }
 
   Future<String?> _promptTitle() async {
-    // Use a timeout to avoid hanging if the DB stream stalls
     List<Document> docs;
     try {
       docs = await ref
@@ -219,13 +209,15 @@ class _CameraPageState extends ConsumerState<CameraPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(
-              ctx,
-              ctrl.text.trim().isEmpty ? title : ctrl.text.trim(),
-            ),
+                ctx,
+                ctrl.text.trim().isEmpty
+                    ? title
+                    : ctrl.text.trim()),
             child: const Text('Use Default'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            onPressed: () =>
+                Navigator.pop(ctx, ctrl.text.trim()),
             child: const Text('Save'),
           ),
         ],
@@ -247,7 +239,8 @@ class _CameraPageState extends ConsumerState<CameraPage> {
         ),
       ),
       body: const Center(
-        child: CircularProgressIndicator(color: Color(0xFF5C4BF5)),
+        child:
+            CircularProgressIndicator(color: Color(0xFF5C4BF5)),
       ),
     );
   }

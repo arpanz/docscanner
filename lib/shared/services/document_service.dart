@@ -6,6 +6,7 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:printing/printing.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/constants.dart';
@@ -33,7 +34,8 @@ class DocumentService {
     required List<String> imagePaths,
   }) async {
     final docsDir = await _documentsDir();
-    final folderName = '${_sanitize(title)}_${_uuid.v4().substring(0, 8)}';
+    final folderName =
+        '${_sanitize(title)}_${_uuid.v4().substring(0, 8)}';
     final folderPath = p.join(docsDir.path, folderName);
     final folder = Directory(folderPath);
     await folder.create(recursive: true);
@@ -56,19 +58,24 @@ class DocumentService {
     }
   }
 
+  /// Creates a document from a scanned PDF.
+  /// Also rasters page 1 to a JPEG cover so the card shows a thumbnail
+  /// instead of initials.
   Future<int> createDocumentFromPdf({
     required String title,
     required String pdfPath,
     required int pageCount,
   }) async {
     final docsDir = await _documentsDir();
-    final folderName = '${_sanitize(title)}_${_uuid.v4().substring(0, 8)}';
+    final folderName =
+        '${_sanitize(title)}_${_uuid.v4().substring(0, 8)}';
     final folderPath = p.join(docsDir.path, folderName);
     final folder = Directory(folderPath);
     await folder.create(recursive: true);
 
     final cleanPath = cleanFilePath(pdfPath);
-    final pdfDest = p.join(folderPath, '${_sanitize(title)}.pdf');
+    final pdfDest =
+        p.join(folderPath, '${_sanitize(title)}.pdf');
     await File(cleanPath).copy(pdfDest);
 
     final docId = await _docsDao.insertDocument(
@@ -80,12 +87,33 @@ class DocumentService {
     );
 
     try {
+      // Raster page 1 of the PDF to a cover JPEG so the card shows
+      // a real thumbnail instead of initials.
+      await _rasterPdfCover(cleanPath, folderPath);
       await _docsDao.refreshDocumentMeta(docId, folderPath);
       return docId;
     } catch (e) {
       await folder.delete(recursive: true);
       await _docsDao.deleteDocument(docId);
       rethrow;
+    }
+  }
+
+  /// Rasters the first page of a PDF and saves it as `0000.jpg`
+  /// inside [folderPath] so it is picked up as a cover image.
+  Future<void> _rasterPdfCover(
+      String pdfPath, String folderPath) async {
+    try {
+      final bytes = await File(pdfPath).readAsBytes();
+      final rasters =
+          await Printing.raster(bytes, pages: [0], dpi: 150).toList();
+      if (rasters.isEmpty) return;
+      final png = await rasters.first.toPng();
+      final coverPath = p.join(folderPath, '0000.png');
+      await File(coverPath).writeAsBytes(png);
+    } catch (e) {
+      // Non-fatal: card falls back to initials if rasterisation fails
+      debugPrint('Cover raster failed: $e');
     }
   }
 
@@ -101,12 +129,14 @@ class DocumentService {
     if (doc == null) return;
     try {
       final folder = Directory(doc.folderPath);
-      if (await folder.exists()) await folder.delete(recursive: true);
+      if (await folder.exists())
+        await folder.delete(recursive: true);
     } catch (_) {}
     await _docsDao.deleteDocument(docId);
   }
 
-  Future<void> deleteImages(int docId, List<String> imagePaths) async {
+  Future<void> deleteImages(
+      int docId, List<String> imagePaths) async {
     final doc = await _docsDao.getDocument(docId);
     if (doc == null) return;
     for (final path in imagePaths) {
@@ -118,8 +148,6 @@ class DocumentService {
     await _docsDao.refreshDocumentMeta(docId, doc.folderPath);
   }
 
-  /// Renames the document title and folder. Also updates pdfPath if it
-  /// lives inside the old folder, so no stale paths remain in the DB.
   Future<void> renameDocument(int docId, String newTitle) async {
     final doc = await _docsDao.getDocument(docId);
     if (doc == null) return;
@@ -132,7 +160,6 @@ class DocumentService {
       final newFolderPath = p.join(parentDir.path, folderName);
       await oldFolder.rename(newFolderPath);
 
-      // Recalculate pdfPath if it was inside the old folder
       String? newPdfPath;
       if (doc.pdfPath != null &&
           doc.pdfPath!.startsWith(doc.folderPath)) {
@@ -167,7 +194,8 @@ class DocumentService {
     await _docsDao.toggleFavourite(docId, value);
   }
 
-  Future<List<String>> getDocumentImages(String folderPath) async {
+  Future<List<String>> getDocumentImages(
+      String folderPath) async {
     final folder = Directory(folderPath);
     if (!await folder.exists()) return [];
     final images = folder
@@ -183,9 +211,6 @@ class DocumentService {
     return images;
   }
 
-  /// Saves a built PDF into the document's own folder (not the app root).
-  /// Returns the path of the saved PDF.
-  /// Naming includes a timestamp to avoid silent overwrites.
   Future<String> savePdfToDocumentFolder(
       int docId, File tempPdf) async {
     final doc = await _docsDao.getDocument(docId);
@@ -199,7 +224,6 @@ class DocumentService {
     );
     final saved = await tempPdf.copy(dest);
 
-    // Update pdfPath in DB
     await _docsDao.updateDocument(
       DocumentsCompanion(
         id: Value(docId),
@@ -210,18 +234,18 @@ class DocumentService {
     return saved.path;
   }
 
-  /// Reorder images using a temp-rename strategy to avoid name conflicts.
-  Future<void> reorderImages(int docId, List<String> orderedPaths) async {
+  Future<void> reorderImages(
+      int docId, List<String> orderedPaths) async {
     final doc = await _docsDao.getDocument(docId);
     if (doc == null) return;
 
-    // Step 1 — rename all to temp names
     final tempPaths = <String>[];
     for (var i = 0; i < orderedPaths.length; i++) {
       final file = File(orderedPaths[i]);
       if (await file.exists()) {
         final ext = p.extension(orderedPaths[i]);
-        final tempPath = p.join(doc.folderPath, 'tmp_$i$ext');
+        final tempPath =
+            p.join(doc.folderPath, 'tmp_$i$ext');
         await file.rename(tempPath);
         tempPaths.add(tempPath);
       } else {
@@ -229,13 +253,13 @@ class DocumentService {
       }
     }
 
-    // Step 2 — rename from temp to final sorted names
     for (var i = 0; i < tempPaths.length; i++) {
       final file = File(tempPaths[i]);
       if (await file.exists()) {
         final ext = p.extension(tempPaths[i]);
         final finalPath = p.join(
-            doc.folderPath, '${i.toString().padLeft(4, '0')}$ext');
+            doc.folderPath,
+            '${i.toString().padLeft(4, '0')}$ext');
         await file.rename(finalPath);
       }
     }
@@ -283,7 +307,8 @@ class DocumentService {
     if (ext == '.pdf') {
       await File(src).copy(dest);
     } else {
-      final result = await FlutterImageCompress.compressAndGetFile(
+      final result =
+          await FlutterImageCompress.compressAndGetFile(
         src,
         dest,
         quality: AppConstants.defaultJpegQuality,
@@ -292,10 +317,11 @@ class DocumentService {
     }
   }
 
-  String _sanitize(String name) =>
-      name.replaceAll(RegExp(r'[^\w\s-]'), '').trim().replaceAll(' ', '_');
+  String _sanitize(String name) => name
+      .replaceAll(RegExp(r'[^\w\s-]'), '')
+      .trim()
+      .replaceAll(' ', '_');
 }
 
-final documentServiceProvider = Provider<DocumentService>((ref) {
-  return DocumentService(ref);
-});
+final documentServiceProvider =
+    Provider<DocumentService>((ref) => DocumentService(ref));
