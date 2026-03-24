@@ -5,11 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pdf/pdf.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:drift/drift.dart';
 
 import '../../database/app_database.dart';
 import '../../shared/services/document_service.dart';
 import '../../shared/services/pdf_service.dart';
+import '../../core/router.dart';
 import '../../core/utils.dart';
 import '../../shared/widgets/app_empty_state.dart';
 
@@ -63,14 +63,26 @@ class _DocumentFolderPageState
         .getDocument(widget.docId);
     if (!mounted) return;
     setState(() => _document = doc);
-    if (doc != null) await _loadImages(doc.folderPath);
+    if (doc != null) await _loadImages(doc);
   }
 
-  Future<void> _loadImages(String folderPath) async {
+  Future<void> _loadImages(Document doc) async {
     final paths = await ref
         .read(documentServiceProvider)
-        .getDocumentImages(folderPath);
+        .getDocumentImages(doc.folderPath);
     if (!mounted) return;
+
+    if (paths.isEmpty &&
+        doc.pdfPath != null &&
+        File(doc.pdfPath!).existsSync()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          context.replace(AppRoutes.viewerPath(widget.docId));
+        }
+      });
+      return;
+    }
+
     setState(() {
       _cachedImagePaths = paths;
       _imagesLoaded = true;
@@ -223,8 +235,7 @@ class _DocumentFolderPageState
           .deleteImages(
               widget.docId, _selectedImages.toList());
 
-      if (_document != null)
-        await _loadImages(_document!.folderPath);
+      if (_document != null) await _loadImages(_document!);
 
       setState(() {
         _selectedImages.removeWhere(

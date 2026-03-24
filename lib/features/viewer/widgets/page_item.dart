@@ -39,7 +39,9 @@ class PageItem extends StatelessWidget {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: isPdf ? _PdfPagePreview(path: imagePath) : _ImagePagePreview(path: imagePath),
+                child: isPdf
+                    ? _PdfPagePreview(path: imagePath)
+                    : _ImagePagePreview(path: imagePath),
               ),
             ),
           ),
@@ -52,7 +54,11 @@ class PageItem extends StatelessWidget {
                 style: const TextStyle(color: Colors.black45, fontSize: 12),
               ),
               IconButton(
-                icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                icon: const Icon(
+                  Icons.delete_outline,
+                  color: Colors.red,
+                  size: 20,
+                ),
                 onPressed: onDelete,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
@@ -111,12 +117,13 @@ class _PdfPagePreview extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.picture_as_pdf_outlined, size: 48, color: Colors.red),
-                const SizedBox(height: 8),
-                Text(
-                  'PDF Preview',
-                  style: TextStyle(color: Colors.grey[600]),
+                const Icon(
+                  Icons.picture_as_pdf_outlined,
+                  size: 48,
+                  color: Colors.red,
                 ),
+                const SizedBox(height: 8),
+                Text('PDF Preview', style: TextStyle(color: Colors.grey[600])),
               ],
             ),
           );
@@ -142,7 +149,11 @@ class _PdfPagePreview extends StatelessWidget {
       if (!await file.exists()) return null;
 
       final bytes = await file.readAsBytes();
-      final rasters = await Printing.raster(bytes, pages: [0], dpi: 72).toList();
+      final rasters = await Printing.raster(
+        bytes,
+        pages: [0],
+        dpi: 72,
+      ).toList();
 
       if (rasters.isNotEmpty) {
         return await rasters.first.toPng();

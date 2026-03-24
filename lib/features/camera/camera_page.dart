@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_doc_scanner/flutter_doc_scanner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:printing/printing.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -47,27 +46,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       return;
     }
 
-    if (Platform.isAndroid) {
-      final needsStorage = await _needsStoragePermission();
-      if (needsStorage) {
-        final hasStorage = await permissionService.requestStorage();
-        if (!hasStorage) {
-          if (!mounted) return;
-          showSnackBar(context,
-              'Storage permission is required to save scanned documents',
-              isError: true);
-          _safePop();
-          return;
-        }
-      }
-    }
-
     if (mounted) await _scan();
-  }
-
-  Future<bool> _needsStoragePermission() async {
-    final status = await Permission.storage.status;
-    return status.isDenied;
   }
 
   Future<void> _scan() async {
@@ -102,7 +81,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       );
 
       if (mounted) {
-        context.go(AppRoutes.folderPath(docId));
+        context.go(AppRoutes.viewerPath(docId));
       }
     } on DocScanException catch (e) {
       if (mounted) {

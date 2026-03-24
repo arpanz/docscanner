@@ -1,6 +1,7 @@
 // lib/features/manager/document_manager_page.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -133,7 +134,11 @@ class DocumentManagerPage extends ConsumerWidget {
                           heroTag:
                               'manager_doc_${docs[i].id}',
                           onTap: () => context.push(
-                              AppRoutes.folderPath(docs[i].id)),
+                              docs[i].pdfPath != null &&
+                                      docs[i].imageCount <= 1 &&
+                                      docs[i].coverImagePath != null
+                                  ? AppRoutes.viewerPath(docs[i].id)
+                                  : AppRoutes.folderPath(docs[i].id)),
                           onLongPress: () => _showDocOptions(
                               context, ref, docs[i]),
                         ),
@@ -193,7 +198,11 @@ class DocumentManagerPage extends ConsumerWidget {
                             trailing:
                                 const Icon(Icons.chevron_right),
                             onTap: () => context.push(
-                                AppRoutes.folderPath(docs[i].id)),
+                                docs[i].pdfPath != null &&
+                                        docs[i].imageCount <= 1 &&
+                                        docs[i].coverImagePath != null
+                                    ? AppRoutes.viewerPath(docs[i].id)
+                                    : AppRoutes.folderPath(docs[i].id)),
                             onLongPress: () => _showDocOptions(
                                 context, ref, docs[i]),
                           );
@@ -238,8 +247,27 @@ class DocumentManagerPage extends ConsumerWidget {
   Future<void> _pickFromGallery(
       BuildContext context, WidgetRef ref) async {
     final picker = ImagePicker();
-    final images =
-        await picker.pickMultiImage(imageQuality: 90);
+    List<XFile> images;
+    try {
+      images = await picker.pickMultiImage(imageQuality: 90);
+    } on PlatformException catch (e) {
+      if (context.mounted) {
+        final message = (e.message?.isNotEmpty ?? false)
+            ? e.message!
+            : 'Gallery access was denied. Please allow Photos/Media access in app settings and try again.';
+        showSnackBar(context, message, isError: true);
+      }
+      return;
+    } catch (e) {
+      if (context.mounted) {
+        showSnackBar(
+          context,
+          'Failed to open gallery: $e',
+          isError: true,
+        );
+      }
+      return;
+    }
     if (images.isEmpty || !context.mounted) return;
 
     final paths = images.map((x) => x.path).toList();
