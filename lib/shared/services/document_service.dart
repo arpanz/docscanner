@@ -21,9 +21,6 @@ class DocumentService {
 
   DocumentsDao get _docsDao => _ref.read(documentsDaoProvider);
 
-  // ---------------------------------------------------------------------------
-  // Get app documents directory
-  // ---------------------------------------------------------------------------
   Future<Directory> _documentsDir() async {
     final base = await getApplicationDocumentsDirectory();
     final dir = Directory(p.join(base.path, 'documents'));
@@ -31,15 +28,12 @@ class DocumentService {
     return dir;
   }
 
-  // ---------------------------------------------------------------------------
-  // Create a new document from a list of raw image paths
-  // ---------------------------------------------------------------------------
   Future<int> createDocument({
     required String title,
     required List<String> imagePaths,
   }) async {
     final docsDir = await _documentsDir();
-    final folderName = '${_sanitize(title)}_${_uuid.v4().substring(0, 8)}';
+    final folderName = '\${_sanitize(title)}_\${_uuid.v4().substring(0, 8)}';
     final folderPath = p.join(docsDir.path, folderName);
     final folder = Directory(folderPath);
     await folder.create(recursive: true);
@@ -56,30 +50,25 @@ class DocumentService {
       await _docsDao.refreshDocumentMeta(docId, folderPath);
       return docId;
     } catch (e) {
-      // Roll back — delete the folder and document row
       await folder.delete(recursive: true);
       await _docsDao.deleteDocument(docId);
       rethrow;
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Create a new document from a scanned PDF
-  // ---------------------------------------------------------------------------
   Future<int> createDocumentFromPdf({
     required String title,
     required String pdfPath,
     required int pageCount,
   }) async {
     final docsDir = await _documentsDir();
-    final folderName = '${_sanitize(title)}_${_uuid.v4().substring(0, 8)}';
+    final folderName = '\${_sanitize(title)}_\${_uuid.v4().substring(0, 8)}';
     final folderPath = p.join(docsDir.path, folderName);
     final folder = Directory(folderPath);
     await folder.create(recursive: true);
 
-    // Copy PDF to folder
     final cleanPath = cleanFilePath(pdfPath);
-    final pdfDest = p.join(folderPath, '${_sanitize(title)}.pdf');
+    final pdfDest = p.join(folderPath, '\${_sanitize(title)}.pdf');
     await File(cleanPath).copy(pdfDest);
 
     final docId = await _docsDao.insertDocument(
@@ -100,56 +89,35 @@ class DocumentService {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Add images to an existing document
-  // ---------------------------------------------------------------------------
   Future<void> addImages(int docId, List<String> imagePaths) async {
     final doc = await _docsDao.getDocument(docId);
     if (doc == null) throw Exception('Document not found');
-
     await _addImages(doc.folderPath, imagePaths);
     await _docsDao.refreshDocumentMeta(docId, doc.folderPath);
   }
 
-  // ---------------------------------------------------------------------------
-  // Delete a full document (folder + DB row)
-  // ---------------------------------------------------------------------------
   Future<void> deleteDocument(int docId) async {
     final doc = await _docsDao.getDocument(docId);
     if (doc == null) return;
-
     try {
       final folder = Directory(doc.folderPath);
-      if (await folder.exists()) {
-        await folder.delete(recursive: true);
-      }
+      if (await folder.exists()) await folder.delete(recursive: true);
     } catch (_) {}
-
     await _docsDao.deleteDocument(docId);
   }
 
-  // ---------------------------------------------------------------------------
-  // Delete specific images from a document
-  // ---------------------------------------------------------------------------
   Future<void> deleteImages(int docId, List<String> imagePaths) async {
     final doc = await _docsDao.getDocument(docId);
     if (doc == null) return;
-
     for (final path in imagePaths) {
       try {
         final file = File(path);
-        if (await file.exists()) {
-          await file.delete();
-        }
+        if (await file.exists()) await file.delete();
       } catch (_) {}
     }
-
     await _docsDao.refreshDocumentMeta(docId, doc.folderPath);
   }
 
-  // ---------------------------------------------------------------------------
-  // Rename document (also renames folder)
-  // ---------------------------------------------------------------------------
   Future<void> renameDocument(int docId, String newTitle) async {
     final doc = await _docsDao.getDocument(docId);
     if (doc == null) return;
@@ -157,10 +125,10 @@ class DocumentService {
     final oldFolder = Directory(doc.folderPath);
     if (await oldFolder.exists()) {
       final parentDir = oldFolder.parent;
-      final folderName = '${_sanitize(newTitle)}_${_uuid.v4().substring(0, 8)}';
+      final folderName =
+          '\${_sanitize(newTitle)}_\${_uuid.v4().substring(0, 8)}';
       final newFolderPath = p.join(parentDir.path, folderName);
       await oldFolder.rename(newFolderPath);
-
       await _docsDao.updateDocument(
         DocumentsCompanion(
           id: Value(docId),
@@ -180,20 +148,13 @@ class DocumentService {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Toggle favourite
-  // ---------------------------------------------------------------------------
   Future<void> toggleFavourite(int docId, bool value) async {
     await _docsDao.toggleFavourite(docId, value);
   }
 
-  // ---------------------------------------------------------------------------
-  // Get all images in a document folder
-  // ---------------------------------------------------------------------------
   Future<List<String>> getDocumentImages(String folderPath) async {
     final folder = Directory(folderPath);
     if (!await folder.exists()) return [];
-
     final images = folder
         .listSync()
         .whereType<File>()
@@ -204,69 +165,80 @@ class DocumentService {
         .map((f) => f.path)
         .toList()
       ..sort((a, b) => a.compareTo(b));
-
     return images;
   }
 
-  // ---------------------------------------------------------------------------
-  // Reorder images in a document folder
-  // ---------------------------------------------------------------------------
+  /// Reorder images using a temp-rename strategy to avoid name conflicts.
   Future<void> reorderImages(int docId, List<String> orderedPaths) async {
     final doc = await _docsDao.getDocument(docId);
     if (doc == null) return;
 
-    // Rename files with numeric prefix for ordering
+    // Step 1 — rename all to temp names to avoid conflicts
+    final tempPaths = <String>[];
     for (var i = 0; i < orderedPaths.length; i++) {
-      final oldFile = File(orderedPaths[i]);
-      if (await oldFile.exists()) {
+      final file = File(orderedPaths[i]);
+      if (await file.exists()) {
         final ext = p.extension(orderedPaths[i]);
-        final newFileName = '${i.toString().padLeft(4, '0')}_$i$ext';
-        final newPath = p.join(doc.folderPath, newFileName);
-        if (orderedPaths[i] != newPath) {
-          await oldFile.rename(newPath);
-        }
+        final tempPath = p.join(doc.folderPath, 'tmp_\$i\$ext');
+        await file.rename(tempPath);
+        tempPaths.add(tempPath);
+      } else {
+        tempPaths.add(orderedPaths[i]); // keep original if missing
+      }
+    }
+
+    // Step 2 — rename from temp to final sorted names
+    for (var i = 0; i < tempPaths.length; i++) {
+      final file = File(tempPaths[i]);
+      if (await file.exists()) {
+        final ext = p.extension(tempPaths[i]);
+        final finalPath =
+            p.join(doc.folderPath, '\${i.toString().padLeft(4, '0')}\$ext');
+        await file.rename(finalPath);
       }
     }
 
     await _docsDao.refreshDocumentMeta(docId, doc.folderPath);
   }
 
-  // ---------------------------------------------------------------------------
-  // Private helpers
-  // ---------------------------------------------------------------------------
   Future<void> _addImages(String folderPath, List<String> imagePaths) async {
-    final successfullyAdded = <String>[];
+    // Find the highest existing index to avoid overwriting existing files
+    final existing = Directory(folderPath)
+        .listSync()
+        .whereType<File>()
+        .where((f) =>
+            f.path.toLowerCase().endsWith('.jpg') ||
+            f.path.toLowerCase().endsWith('.jpeg') ||
+            f.path.toLowerCase().endsWith('.png'))
+        .length;
 
+    final successfullyAdded = <String>[];
     for (var i = 0; i < imagePaths.length; i++) {
       final rawSrc = imagePaths[i];
       final src = cleanFilePath(rawSrc);
       final ext = p.extension(src).toLowerCase();
+      final idx = existing + i;
       final dest = p.join(
         folderPath,
-        '${i.toString().padLeft(4, '0')}_$i${ext == '.pdf' ? '.jpg' : ext}',
+        '\${idx.toString().padLeft(4, '0')}\${ext == '.pdf' ? '.jpg' : ext}',
       );
       try {
-        if (ext == '.pdf') {
-          // Convert PDF page to image
-          await _compressAndSave(src, dest);
-        } else {
-          await _compressAndSave(src, dest);
-        }
+        await _compressAndSave(src, dest);
         successfullyAdded.add(dest);
       } catch (e) {
-        debugPrint('Failed to save image $i: $e');
+        debugPrint('Failed to save image \$i: \$e');
       }
     }
 
     if (successfullyAdded.isEmpty) {
-      throw Exception('No images could be saved — all images failed to process');
+      throw Exception(
+          'No images could be saved — all images failed to process');
     }
   }
 
   Future<void> _compressAndSave(String src, String dest) async {
     final ext = p.extension(src).toLowerCase();
     if (ext == '.pdf') {
-      // For PDFs, we'll need to rasterize first (handled by caller)
       await File(src).copy(dest);
     } else {
       final result = await FlutterImageCompress.compressAndGetFile(
@@ -274,10 +246,7 @@ class DocumentService {
         dest,
         quality: AppConstants.defaultJpegQuality,
       );
-      if (result == null) {
-        // Fallback: plain copy
-        await File(src).copy(dest);
-      }
+      if (result == null) await File(src).copy(dest);
     }
   }
 
@@ -285,9 +254,6 @@ class DocumentService {
       name.replaceAll(RegExp(r'[^\w\s-]'), '').trim().replaceAll(' ', '_');
 }
 
-// ---------------------------------------------------------------------------
-// Riverpod provider
-// ---------------------------------------------------------------------------
 final documentServiceProvider = Provider<DocumentService>((ref) {
   return DocumentService(ref);
 });
