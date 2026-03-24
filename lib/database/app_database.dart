@@ -34,28 +34,16 @@ class AppDatabase extends _$AppDatabase {
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) => m.createAll(),
         onUpgrade: (m, from, to) async {
-          await m.runMigrationSteps(
-            from: from,
-            to: to,
-            steps: MigrationStepWithVersion(
-              (stepFrom, stepTo, migrator) async {
-                if (stepFrom == 1) {
-                  // v1 → v2: add pdfPath, imageCount, coverImagePath
-                  await migrator.addColumn(
-                      documents, documents.pdfPath);
-                  await migrator.addColumn(
-                      documents, documents.imageCount);
-                  await migrator.addColumn(
-                      documents, documents.coverImagePath);
-                }
-                if (stepFrom == 2) {
-                  // v2 → v3: add isFavourite
-                  await migrator.addColumn(
-                      documents, documents.isFavourite);
-                }
-              },
-            ),
-          );
+          // v1 → v2: add pdfPath, imageCount, coverImagePath
+          if (from <= 1) {
+            await m.addColumn(documents, documents.pdfPath);
+            await m.addColumn(documents, documents.imageCount);
+            await m.addColumn(documents, documents.coverImagePath);
+          }
+          // v2 → v3: add isFavourite
+          if (from <= 2) {
+            await m.addColumn(documents, documents.isFavourite);
+          }
         },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');
