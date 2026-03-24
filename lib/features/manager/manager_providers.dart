@@ -13,7 +13,7 @@ extension SortOptionLabel on SortOption {
     SortOption.dateAsc => 'Oldest first',
     SortOption.nameAsc => 'Name A–Z',
     SortOption.nameDesc => 'Name Z–A',
-    SortOption.pagesDesc => 'Most pages',
+    SortOption.pagesDesc => 'Most images',  // renamed from 'Most pages' — imageCount counts images, not PDF pages
   };
 }
 
@@ -33,10 +33,7 @@ final showFavouritesOnlyProvider = StateProvider<bool>((ref) => false);
 final allDocumentsProvider = StreamProvider<List<Document>>((ref) {
   final dao = ref.watch(documentsDaoProvider);
   final showFavourites = ref.watch(showFavouritesOnlyProvider);
-
-  if (showFavourites) {
-    return dao.watchFavourites();
-  }
+  if (showFavourites) return dao.watchFavourites();
   return dao.watchAllDocuments();
 });
 

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_doc_scanner/flutter_doc_scanner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../core/utils.dart';
 import '../../core/router.dart';
 import '../../database/app_database.dart';
@@ -45,10 +46,12 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       return;
     }
 
-    // Only request storage on Android < 13 (API 32 and below)
+    // On Android, only request storage permission on API <= 32 (Android 12 and below).
+    // Android 13+ (API 33+) removed READ_EXTERNAL_STORAGE — requesting it causes
+    // an automatic denial that blocks the entire scan flow.
     if (Platform.isAndroid) {
-      final sdkInt = await _getAndroidSdkInt();
-      if (sdkInt != null && sdkInt <= 32) {
+      final needsStorage = await _needsStoragePermission();
+      if (needsStorage) {
         final hasStorage = await permissionService.requestStorage();
         if (!hasStorage) {
           if (!mounted) return;
@@ -66,15 +69,21 @@ class _CameraPageState extends ConsumerState<CameraPage> {
     if (mounted) await _scan();
   }
 
-  Future<int?> _getAndroidSdkInt() async {
-    try {
-      // dart:io doesn't expose SDK int directly; use a safe fallback
-      // If running on Android 13+, storage permission is not needed
-      // We assume modern devices (API 33+) by default — this is conservative
-      return null; // null means skip storage check (safe for API 33+)
-    } catch (_) {
-      return null;
-    }
+  /// Returns true only on Android API <= 32, where storage permission is needed.
+  /// Uses permission_handler status check as a proxy — on API 33+ the permission
+  /// status will be .denied/.permanentlyDenied immediately without prompting,
+  /// meaning we can detect old Android by checking if the permission is requestable.
+  Future<bool> _needsStoragePermission() async {
+    // manageExternalStorage is API 30+, storage is the legacy one.
+    // If Permission.storage is not restricted (i.e., not permanently denied before
+    // ever asking), we're likely on API <= 32.
+    // Safest approach: check if Permission.storage.status is not permanentlyDenied
+    // without prompting — on API 33+ it returns permanentlyDenied immediately.
+    final status = await Permission.storage.status;
+    // On Android 13+: returns .denied or .permanentlyDenied without ever prompting.
+    // We only need to request it if it's in a requestable state (denied, not permanent).
+    // On Android 13+ .photos permission covers gallery, not needed for scan flow.
+    return status.isDenied; // .isDenied means it can still be requested
   }
 
   Future<void> _scan() async {
@@ -99,7 +108,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       final title = await _promptTitle();
       if (!mounted) return;
       final finalTitle = (title == null || title.isEmpty)
-          ? 'Document \${formatDate(DateTime.now())}'
+          ? 'Document ${formatDate(DateTime.now())}'
           : title;
 
       final docId = await svc.createDocumentFromPdf(
@@ -115,12 +124,12 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       }
     } on DocScanException catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Scan failed: \${e.message}', isError: true);
+        showSnackBar(context, 'Scan failed: ${e.message}', isError: true);
         _safePop();
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Error: \$e', isError: true);
+        showSnackBar(context, 'Error: $e', isError: true);
         _safePop();
       }
     }
@@ -146,12 +155,12 @@ class _CameraPageState extends ConsumerState<CameraPage> {
     try {
       await svc.addImages(widget.existingDocId!, [cleanPath]);
       if (mounted) {
-        showSnackBar(context, 'Added \$pageCount page(s) to document');
+        showSnackBar(context, 'Added $pageCount page(s) to document');
         _safePop();
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Failed to add pages: \$e', isError: true);
+        showSnackBar(context, 'Failed to add pages: $e', isError: true);
         _safePop();
       }
     }
@@ -161,11 +170,11 @@ class _CameraPageState extends ConsumerState<CameraPage> {
     final docs =
         await ref.read(documentsDaoProvider).watchAllDocuments().first;
 
-    final baseTitle = 'Document \${formatDate(DateTime.now())}';
+    final baseTitle = 'Document ${formatDate(DateTime.now())}';
     String title = baseTitle;
     int counter = 1;
     while (docs.any((d) => d.title == title)) {
-      title = '\$baseTitle (\$counter)';
+      title = '$baseTitle ($counter)';
       counter++;
     }
 
@@ -187,9 +196,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
           TextButton(
             onPressed: () => Navigator.pop(
                 ctx,
-                ctrl.text.trim().isEmpty
-                    ? title
-                    : ctrl.text.trim()),
+                ctrl.text.trim().isEmpty ? title : ctrl.text.trim()),
             child: const Text('Use Default'),
           ),
           FilledButton(

@@ -22,13 +22,36 @@ class DocumentFolderPage extends ConsumerStatefulWidget {
   ConsumerState<DocumentFolderPage> createState() => _DocumentFolderPageState();
 }
 
-class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage> {
+class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
+    with RouteAware {
   bool _selectMode = false;
   final Set<String> _selectedImages = {};
   Document? _document;
-  // Cached async image paths — avoids sync I/O in build()
   List<String> _cachedImagePaths = [];
   bool _imagesLoaded = false;
+
+  // RouteObserver subscription for detecting return from camera
+  static final RouteObserver<ModalRoute<void>> routeObserver =
+      RouteObserver<ModalRoute<void>>();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)!);
+  }
+
+  @override
+  void dispose() {
+    routeObserver.unsubscribe(this);
+    super.dispose();
+  }
+
+  /// Called when this route is popped back to (e.g. returning from camera).
+  /// Reloads document + images so newly added pages appear immediately.
+  @override
+  void didPopNext() {
+    _loadDocument();
+  }
 
   @override
   void initState() {
@@ -94,10 +117,9 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage> {
 
       final docsDir = await getApplicationDocumentsDirectory();
       final savedPdf = await pdfFile.copy(
-        '\${docsDir.path}/\${_sanitizeFileName(_document!.title)}.pdf',
+        '${docsDir.path}/${_sanitizeFileName(_document!.title)}.pdf',
       );
 
-      // Update PDF path on document — no folder rename needed
       await ref.read(documentsDaoProvider).updateDocument(
             DocumentsCompanion(
               id: Value(widget.docId),
@@ -111,7 +133,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage> {
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Failed to create PDF: \$e', isError: true);
+        showSnackBar(context, 'Failed to create PDF: $e', isError: true);
       }
     }
   }
@@ -122,7 +144,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Delete \${_selectedImages.length} image(s)?'),
+        title: Text('Delete ${_selectedImages.length} image(s)?'),
         content: const Text('This action cannot be undone.'),
         actions: [
           TextButton(
@@ -141,17 +163,17 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage> {
     if (confirmed != true) return;
 
     try {
-      final docService = ref.read(documentServiceProvider);
-      await docService.deleteImages(widget.docId, _selectedImages.toList());
-      // Reload images after deletion
+      await ref
+          .read(documentServiceProvider)
+          .deleteImages(widget.docId, _selectedImages.toList());
       if (_document != null) await _loadImages(_document!.folderPath);
       if (mounted) {
-        showSnackBar(context, 'Deleted \${_selectedImages.length} image(s)');
+        showSnackBar(context, 'Deleted ${_selectedImages.length} image(s)');
         _toggleSelectMode();
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Failed to delete: \$e', isError: true);
+        showSnackBar(context, 'Failed to delete: $e', isError: true);
       }
     }
   }
@@ -174,7 +196,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage> {
       if (mounted) _toggleSelectMode();
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Failed to share: \$e', isError: true);
+        showSnackBar(context, 'Failed to share: $e', isError: true);
       }
     }
   }
@@ -262,7 +284,6 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage> {
                         if (_selectMode) {
                           _toggleImageSelection(imagePath);
                         } else {
-                          // Open full-screen viewer on tap
                           _openFullScreen(context, imagePaths, index);
                         }
                       },
@@ -319,7 +340,10 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage> {
             )
           : null,
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/camera?docId=\${widget.docId}'),
+        // Refresh images when returning from camera
+        onPressed: () => context
+            .push('/camera?docId=${widget.docId}')
+            .then((_) => _loadDocument()),
         icon: const Icon(Icons.add_a_photo),
         label: const Text('Add Images'),
       ),
@@ -373,11 +397,14 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage> {
 
     if (newTitle == null || newTitle.isEmpty) return;
     try {
-      await ref.read(documentServiceProvider).renameDocument(widget.docId, newTitle);
+      await ref
+          .read(documentServiceProvider)
+          .renameDocument(widget.docId, newTitle);
       await _loadDocument();
       if (mounted) showSnackBar(context, 'Document renamed');
     } catch (e) {
-      if (mounted) showSnackBar(context, 'Failed to rename: \$e', isError: true);
+      if (mounted)
+        showSnackBar(context, 'Failed to rename: $e', isError: true);
     }
   }
 
@@ -387,7 +414,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage> {
       builder: (ctx) => AlertDialog(
         title: const Text('Delete document?'),
         content: Text(
-          'Are you sure you want to delete "\${_document!.title}"? This cannot be undone.',
+          'Are you sure you want to delete "${_document!.title}"? This cannot be undone.',
         ),
         actions: [
           TextButton(
@@ -410,7 +437,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage> {
       }
     } catch (e) {
       if (mounted)
-        showSnackBar(context, 'Failed to delete: \$e', isError: true);
+        showSnackBar(context, 'Failed to delete: $e', isError: true);
     }
   }
 }
@@ -461,7 +488,7 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
             padding: const EdgeInsets.only(right: 16),
             child: Center(
               child: Text(
-                '\${_currentIndex + 1} / \${widget.imagePaths.length}',
+                '${_currentIndex + 1} / ${widget.imagePaths.length}',
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
@@ -499,7 +526,7 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
                     width: double.infinity,
                     errorBuilder: (ctx, err, _) => Center(
                       child: Text(
-                        'Cannot load page \${i + 1}',
+                        'Cannot load page ${i + 1}',
                         style: const TextStyle(color: Colors.grey),
                       ),
                     ),
@@ -515,7 +542,7 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
 }
 
 // ---------------------------------------------------------------------------
-// Image Tile Widget
+// Image Tile
 // ---------------------------------------------------------------------------
 class _ImageTile extends StatelessWidget {
   const _ImageTile({
@@ -561,9 +588,7 @@ class _ImageTile extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
-                  isSelected
-                      ? Icons.check_circle
-                      : Icons.circle_outlined,
+                  isSelected ? Icons.check_circle : Icons.circle_outlined,
                   color: Colors.white,
                   size: 24,
                 ),
@@ -576,7 +601,7 @@ class _ImageTile extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Action Chip Widget
+// Action Chip
 // ---------------------------------------------------------------------------
 class _ActionChip extends StatelessWidget {
   const _ActionChip({
