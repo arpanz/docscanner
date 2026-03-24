@@ -7,9 +7,14 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:uuid/uuid.dart';
 
 class PdfService {
+  final _uuid = const Uuid();
+
   /// Build a PDF from a list of image file paths and return the output file.
+  /// Uses a unique filename to avoid overwriting a concurrent build for the
+  /// same document title.
   Future<File> buildPdf({
     required String title,
     required List<String> imagePaths,
@@ -32,7 +37,11 @@ class PdfService {
     }
 
     final outDir = await getTemporaryDirectory();
-    final outFile = File(p.join(outDir.path, '${_sanitize(title)}.pdf'));
+    // Fix: add UUID suffix so two rapid builds for the same title don't
+    // overwrite each other's temp file before copy completes.
+    final uniqueName =
+        '${_sanitize(title)}_${_uuid.v4().substring(0, 8)}.pdf';
+    final outFile = File(p.join(outDir.path, uniqueName));
     await outFile.writeAsBytes(await doc.save());
     return outFile;
   }
@@ -63,14 +72,8 @@ class PdfService {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Helpers
-  // ---------------------------------------------------------------------------
   String _sanitize(String name) =>
       name.replaceAll(RegExp(r'[^\w\s-]'), '').trim().replaceAll(' ', '_');
 }
 
-// ---------------------------------------------------------------------------
-// Riverpod provider
-// ---------------------------------------------------------------------------
 final pdfServiceProvider = Provider<PdfService>((ref) => PdfService());

@@ -59,7 +59,7 @@ class DocumentService {
   }
 
   /// Creates a document from a scanned PDF.
-  /// Also rasters page 1 to a JPEG cover so the card shows a thumbnail
+  /// Also rasters page 1 to a PNG cover so the card shows a thumbnail
   /// instead of initials.
   Future<int> createDocumentFromPdf({
     required String title,
@@ -87,8 +87,6 @@ class DocumentService {
     );
 
     try {
-      // Raster page 1 of the PDF to a cover JPEG so the card shows
-      // a real thumbnail instead of initials.
       await _rasterPdfCover(cleanPath, folderPath);
       await _docsDao.refreshDocumentMeta(docId, folderPath);
       return docId;
@@ -99,8 +97,8 @@ class DocumentService {
     }
   }
 
-  /// Rasters the first page of a PDF and saves it as `0000.jpg`
-  /// inside [folderPath] so it is picked up as a cover image.
+  /// Rasters the first page of a PDF and saves it as `cover.png`
+  /// (prefixed with `~` so _addImages excludes it from user-page counting).
   Future<void> _rasterPdfCover(
       String pdfPath, String folderPath) async {
     try {
@@ -109,10 +107,11 @@ class DocumentService {
           await Printing.raster(bytes, pages: [0], dpi: 150).toList();
       if (rasters.isEmpty) return;
       final png = await rasters.first.toPng();
-      final coverPath = p.join(folderPath, '0000.png');
+      // Prefix with '~' so it sorts last and is excluded from
+      // user-page index counting in _addImages.
+      final coverPath = p.join(folderPath, '~cover.png');
       await File(coverPath).writeAsBytes(png);
     } catch (e) {
-      // Non-fatal: card falls back to initials if rasterisation fails
       debugPrint('Cover raster failed: $e');
     }
   }
@@ -179,6 +178,9 @@ class DocumentService {
           updatedAt: Value(DateTime.now()),
         ),
       );
+
+      // Fix: refresh cover/imageCount so they point to the new folder path
+      await _docsDao.refreshDocumentMeta(docId, newFolderPath);
     } else {
       await _docsDao.updateDocument(
         DocumentsCompanion(
@@ -194,6 +196,8 @@ class DocumentService {
     await _docsDao.toggleFavourite(docId, value);
   }
 
+  /// Returns user-page images only — excludes the cover file (~cover.png)
+  /// and any other internal files.
   Future<List<String>> getDocumentImages(
       String folderPath) async {
     final folder = Directory(folderPath);
@@ -201,10 +205,14 @@ class DocumentService {
     final images = folder
         .listSync()
         .whereType<File>()
-        .where((f) =>
-            f.path.toLowerCase().endsWith('.jpg') ||
-            f.path.toLowerCase().endsWith('.jpeg') ||
-            f.path.toLowerCase().endsWith('.png'))
+        .where((f) {
+          final name = p.basename(f.path);
+          // Exclude the raster cover and any temp files
+          if (name.startsWith('~')) return false;
+          return f.path.toLowerCase().endsWith('.jpg') ||
+              f.path.toLowerCase().endsWith('.jpeg') ||
+              f.path.toLowerCase().endsWith('.png');
+        })
         .map((f) => f.path)
         .toList()
       ..sort((a, b) => a.compareTo(b));
@@ -231,15 +239,25 @@ class DocumentService {
         updatedAt: Value(DateTime.now()),
       ),
     );
+
+    // Fix: refresh so imageCount/coverImagePath stay accurate after PDF is added
+    await _docsDao.refreshDocumentMeta(docId, doc.folderPath);
+
     return saved.path;
   }
 
+  /// Reorders images in the document folder using a two-phase rename.
+  /// Phase 1: rename each file to a temp name to avoid collisions.
+  /// Phase 2: rename each temp file to its final zero-padded name.
+  /// On any error in phase 2, attempts to restore original names.
   Future<void> reorderImages(
       int docId, List<String> orderedPaths) async {
     final doc = await _docsDao.getDocument(docId);
     if (doc == null) return;
 
+    // Phase 1: rename to temp names, record originals for rollback
     final tempPaths = <String>[];
+    final originalPaths = List<String>.from(orderedPaths);
     for (var i = 0; i < orderedPaths.length; i++) {
       final file = File(orderedPaths[i]);
       if (await file.exists()) {
@@ -249,19 +267,34 @@ class DocumentService {
         await file.rename(tempPath);
         tempPaths.add(tempPath);
       } else {
-        tempPaths.add(orderedPaths[i]);
+        tempPaths.add(orderedPaths[i]); // keep original if missing
       }
     }
 
-    for (var i = 0; i < tempPaths.length; i++) {
-      final file = File(tempPaths[i]);
-      if (await file.exists()) {
-        final ext = p.extension(tempPaths[i]);
-        final finalPath = p.join(
-            doc.folderPath,
-            '${i.toString().padLeft(4, '0')}$ext');
-        await file.rename(finalPath);
+    // Phase 2: rename to final zero-padded names, with rollback on error
+    try {
+      for (var i = 0; i < tempPaths.length; i++) {
+        final file = File(tempPaths[i]);
+        if (await file.exists()) {
+          final ext = p.extension(tempPaths[i]);
+          final finalPath = p.join(
+              doc.folderPath,
+              '${i.toString().padLeft(4, '0')}$ext');
+          await file.rename(finalPath);
+        }
       }
+    } catch (e) {
+      debugPrint('reorderImages phase-2 failed, attempting rollback: $e');
+      // Rollback: rename temp files back to original names
+      for (var i = 0; i < tempPaths.length; i++) {
+        try {
+          final tempFile = File(tempPaths[i]);
+          if (await tempFile.exists()) {
+            await tempFile.rename(originalPaths[i]);
+          }
+        } catch (_) {}
+      }
+      rethrow;
     }
 
     await _docsDao.refreshDocumentMeta(docId, doc.folderPath);
@@ -269,24 +302,31 @@ class DocumentService {
 
   Future<void> _addImages(
       String folderPath, List<String> imagePaths) async {
+    // Fix: exclude the raster cover (~cover.png) and any non-user files
+    // from the existing count so new pages are indexed correctly.
     final existing = Directory(folderPath)
         .listSync()
         .whereType<File>()
-        .where((f) =>
-            f.path.toLowerCase().endsWith('.jpg') ||
-            f.path.toLowerCase().endsWith('.jpeg') ||
-            f.path.toLowerCase().endsWith('.png'))
+        .where((f) {
+          final name = p.basename(f.path);
+          if (name.startsWith('~')) return false;
+          return f.path.toLowerCase().endsWith('.jpg') ||
+              f.path.toLowerCase().endsWith('.jpeg') ||
+              f.path.toLowerCase().endsWith('.png');
+        })
         .length;
 
     final successfullyAdded = <String>[];
     for (var i = 0; i < imagePaths.length; i++) {
       final rawSrc = imagePaths[i];
       final src = cleanFilePath(rawSrc);
-      final ext = p.extension(src).toLowerCase();
+      final srcExt = p.extension(src).toLowerCase();
       final idx = existing + i;
+      // Fix: preserve original extension — don't force .jpg for .png sources
+      final destExt = (srcExt == '.pdf') ? '.jpg' : srcExt;
       final dest = p.join(
         folderPath,
-        '${idx.toString().padLeft(4, '0')}${ext == '.pdf' ? '.jpg' : ext}',
+        '${idx.toString().padLeft(4, '0')}$destExt',
       );
       try {
         await _compressAndSave(src, dest);
@@ -303,8 +343,8 @@ class DocumentService {
   }
 
   Future<void> _compressAndSave(String src, String dest) async {
-    final ext = p.extension(src).toLowerCase();
-    if (ext == '.pdf') {
+    final srcExt = p.extension(src).toLowerCase();
+    if (srcExt == '.pdf') {
       await File(src).copy(dest);
     } else {
       final result =
@@ -313,6 +353,9 @@ class DocumentService {
         dest,
         quality: AppConstants.defaultJpegQuality,
       );
+      // Fallback: copy as-is if compression fails.
+      // dest extension already matches src extension (fixed in _addImages)
+      // so the copied file will be valid.
       if (result == null) await File(src).copy(dest);
     }
   }

@@ -12,8 +12,7 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
   DocumentsDao(super.db);
 
   /// Returns an unsorted stream — sorting is handled entirely by
-  /// filteredDocumentsProvider on the client side to avoid
-  /// double-ordering and flash-of-wrong-order issues.
+  /// filteredDocumentsProvider on the client side.
   Stream<List<Document>> watchAllDocuments() =>
       select(documents).watch();
 
@@ -42,8 +41,8 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
   }
 
   /// Refreshes imageCount, coverImagePath, updatedAt from the folder.
-  /// Async listing — never blocks the main thread.
-  /// PDF-only documents get imageCount = 1 so sort-by-images works.
+  /// Excludes ~cover.png and other internal files from user-page count.
+  /// PDF-only documents get imageCount = 1 so sort-by-pages works.
   Future<void> refreshDocumentMeta(
       int docId, String folderPath) async {
     final folder = Directory(folderPath);
@@ -66,15 +65,23 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
         .cast<File>()
         .toList();
 
-    final images = allFiles
-        .where((f) =>
-            f.path.toLowerCase().endsWith('.jpg') ||
-            f.path.toLowerCase().endsWith('.jpeg') ||
-            f.path.toLowerCase().endsWith('.png'))
+    // User pages: images that are NOT internal files (prefixed with ~)
+    final userImages = allFiles
+        .where((f) {
+          final name = f.path.split('/').last;
+          if (name.startsWith('~')) return false;
+          return f.path.toLowerCase().endsWith('.jpg') ||
+              f.path.toLowerCase().endsWith('.jpeg') ||
+              f.path.toLowerCase().endsWith('.png');
+        })
         .toList()
       ..sort((a, b) => a.path.compareTo(b.path));
 
-    if (images.isEmpty) {
+    // Cover: prefer ~cover.png (raster), fall back to first user image
+    final coverFile = allFiles.where((f) =>
+        f.path.split('/').last == '~cover.png').firstOrNull;
+
+    if (userImages.isEmpty && coverFile == null) {
       final pdfs = allFiles.where(
           (f) => f.path.toLowerCase().endsWith('.pdf'));
       final hasPdf =
@@ -91,12 +98,14 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
       return;
     }
 
+    final coverPath = coverFile?.path ?? userImages.first.path;
+
     await (update(documents)
           ..where((d) => d.id.equals(docId)))
         .write(
       DocumentsCompanion(
-        imageCount: Value(images.length),
-        coverImagePath: Value(images.first.path),
+        imageCount: Value(userImages.isEmpty ? 1 : userImages.length),
+        coverImagePath: Value(coverPath),
         updatedAt: Value(DateTime.now()),
       ),
     );

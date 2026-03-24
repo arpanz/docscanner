@@ -186,10 +186,10 @@ class DocumentManagerPage extends ConsumerWidget {
                               style: const TextStyle(
                                   fontWeight: FontWeight.w600),
                             ),
-                            subtitle: Text(
-                              // Fix: "1 page" not "1 pages"
-                              '$count ${count == 1 ? 'page' : 'pages'} · ${relativeDate(docs[i].updatedAt)}',
-                            ),
+                            // Fix: list view now shows size like grid card
+                            // footer does, keeping both views consistent.
+                            subtitle: _ListTileSubtitle(
+                                document: docs[i]),
                             trailing:
                                 const Icon(Icons.chevron_right),
                             onTap: () => context.push(
@@ -347,8 +347,6 @@ class DocumentManagerPage extends ConsumerWidget {
                           .error)),
               onTap: () async {
                 Navigator.pop(sheetCtx);
-                // Use a proper AlertDialog with red FilledButton
-                // for consistency with all other delete dialogs.
                 final ok = await showDialog<bool>(
                   context: context,
                   builder: (ctx) => AlertDialog(
@@ -387,6 +385,76 @@ class DocumentManagerPage extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// List tile subtitle — shows page count + folder size (matches grid card)
+// ---------------------------------------------------------------------------
+class _ListTileSubtitle extends StatefulWidget {
+  const _ListTileSubtitle({required this.document});
+  final Document document;
+
+  @override
+  State<_ListTileSubtitle> createState() =>
+      _ListTileSubtitleState();
+}
+
+class _ListTileSubtitleState
+    extends State<_ListTileSubtitle> {
+  late Future<int> _sizeFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _sizeFuture =
+        _computeSize(widget.document.folderPath);
+  }
+
+  @override
+  void didUpdateWidget(_ListTileSubtitle old) {
+    super.didUpdateWidget(old);
+    if (old.document.folderPath !=
+            widget.document.folderPath ||
+        old.document.updatedAt !=
+            widget.document.updatedAt) {
+      _sizeFuture =
+          _computeSize(widget.document.folderPath);
+    }
+  }
+
+  Future<int> _computeSize(String folderPath) async {
+    try {
+      final folder = Directory(folderPath);
+      if (!await folder.exists()) return 0;
+      int total = 0;
+      await for (final entity in folder.list()) {
+        if (entity is File) {
+          try {
+            total += await entity.length();
+          } catch (_) {}
+        }
+      }
+      return total;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final count = widget.document.imageCount;
+    final pageLabel =
+        '$count ${count == 1 ? 'page' : 'pages'}';
+    return FutureBuilder<int>(
+      future: _sizeFuture,
+      builder: (context, snapshot) {
+        final sizeStr = snapshot.hasData
+            ? formatBytes(snapshot.data!)
+            : '\u2026';
+        return Text('$pageLabel · $sizeStr');
+      },
     );
   }
 }

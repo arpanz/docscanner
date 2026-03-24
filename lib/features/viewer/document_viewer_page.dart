@@ -1,5 +1,6 @@
 // lib/features/viewer/document_viewer_page.dart
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -49,8 +50,7 @@ class _DocumentViewerPageState
           return _PdfViewerScaffold(doc: doc, pdfPath: pdfPath);
         }
 
-        // Guard ensures redirect fires at most once even if the
-        // stream emits multiple times.
+        // Guard: fire redirect at most once even if stream emits multiple times
         if (!_redirected) {
           _redirected = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -66,27 +66,54 @@ class _DocumentViewerPageState
   }
 }
 
-class _PdfViewerScaffold extends StatelessWidget {
+// ---------------------------------------------------------------------------
+// PDF viewer scaffold — caches bytes in initState so PdfPreview
+// does not re-read the file on every build callback.
+// ---------------------------------------------------------------------------
+class _PdfViewerScaffold extends StatefulWidget {
   const _PdfViewerScaffold(
       {required this.doc, required this.pdfPath});
   final Document doc;
   final String pdfPath;
 
   @override
+  State<_PdfViewerScaffold> createState() =>
+      _PdfViewerScaffoldState();
+}
+
+class _PdfViewerScaffoldState extends State<_PdfViewerScaffold> {
+  Uint8List? _pdfBytes;
+  String? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBytes();
+  }
+
+  Future<void> _loadBytes() async {
+    try {
+      final bytes = await File(widget.pdfPath).readAsBytes();
+      if (mounted) setState(() => _pdfBytes = bytes);
+    } catch (e) {
+      if (mounted) setState(() => _loadError = e.toString());
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        backgroundColor:
-            Theme.of(context).colorScheme.surface,
-        foregroundColor:
-            Theme.of(context).colorScheme.onSurface,
+        backgroundColor: cs.surface,
+        foregroundColor: cs.onSurface,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
             if (context.canPop()) context.pop();
           },
         ),
-        title: Text(doc.title),
+        title: Text(widget.doc.title),
         actions: [
           IconButton(
             icon: const Icon(Icons.ios_share),
@@ -94,24 +121,31 @@ class _PdfViewerScaffold extends StatelessWidget {
               await SharePlus.instance.share(
                 ShareParams(
                   files: [
-                    XFile(pdfPath,
+                    XFile(widget.pdfPath,
                         mimeType: 'application/pdf'),
                   ],
-                  subject: doc.title,
+                  subject: widget.doc.title,
                 ),
               );
             },
           ),
         ],
       ),
-      body: PdfPreview(
-        build: (format) async =>
-            File(pdfPath).readAsBytes(),
-        useActions: false,
-        canChangeOrientation: false,
-        canChangePageFormat: false,
-        canDebug: false,
-      ),
+      body: _loadError != null
+          ? Center(
+              child: Text('Failed to load PDF: $_loadError',
+                  style: TextStyle(color: cs.error)))
+          : _pdfBytes == null
+              ? const AppLoading()
+              : PdfPreview(
+                  // Fix: supply cached bytes — avoids re-reading file
+                  // on every PdfPreview build callback.
+                  build: (format) async => _pdfBytes!,
+                  useActions: false,
+                  canChangeOrientation: false,
+                  canChangePageFormat: false,
+                  canDebug: false,
+                ),
     );
   }
 }

@@ -159,7 +159,6 @@ class _DocumentFolderPageState
 
       if (mounted) {
         _toggleSelectMode();
-        // Offer a direct "View PDF" action in the snackbar
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
@@ -196,13 +195,12 @@ class _DocumentFolderPageState
   Future<void> _deleteSelected() async {
     if (_document == null || _selectedImages.isEmpty) return;
 
-    // Capture count BEFORE any state changes
     final deleteCount = _selectedImages.length;
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Delete $deleteCount image${deleteCount == 1 ? '' : 's'}?'),
+        title: Text('Delete $deleteCount page${deleteCount == 1 ? '' : 's'}?'),
         content: const Text('This action cannot be undone.'),
         actions: [
           TextButton(
@@ -236,7 +234,7 @@ class _DocumentFolderPageState
       if (mounted) {
         showSnackBar(
             context,
-            'Deleted $deleteCount image${deleteCount == 1 ? '' : 's'}');
+            'Deleted $deleteCount page${deleteCount == 1 ? '' : 's'}');
         _toggleSelectMode();
       }
     } catch (e) {
@@ -277,222 +275,249 @@ class _DocumentFolderPageState
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final imagePaths = _cachedImagePaths;
+    final hasImages = imagePaths.isNotEmpty;
 
-    return Scaffold(
-      backgroundColor: cs.surfaceContainerLow,
-      appBar: AppBar(
-        backgroundColor: cs.surface,
-        foregroundColor: cs.onSurface,
-        scrolledUnderElevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            if (context.canPop()) context.pop();
-          },
-        ),
-        title: Text(_document?.title ?? 'Document'),
-        actions: [
-          if (_selectMode) ...[
-            IconButton(
-              icon: const Icon(Icons.select_all),
-              onPressed:
-                  _selectedImages.length == imagePaths.length
-                      ? _deselectAll
-                      : _selectAll,
-              tooltip:
-                  _selectedImages.length == imagePaths.length
-                      ? 'Deselect all'
-                      : 'Select all',
+    return PopScope(
+      // Fix: if in reorder or select mode, back button exits the mode
+      // instead of popping the page.
+      canPop: !_reorderMode && !_selectMode,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          if (_reorderMode) _toggleReorderMode();
+          else if (_selectMode) _toggleSelectMode();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: cs.surfaceContainerLow,
+        appBar: AppBar(
+          backgroundColor: cs.surface,
+          foregroundColor: cs.onSurface,
+          scrolledUnderElevation: 0,
+          leading: IconButton(
+            icon: Icon(
+              (_reorderMode || _selectMode)
+                  ? Icons.close
+                  : Icons.arrow_back,
             ),
-            IconButton(
-              icon: const Icon(Icons.close),
-              onPressed: _toggleSelectMode,
-              tooltip: 'Done',
-            ),
-          ] else if (_reorderMode) ...[
-            IconButton(
-              icon: const Icon(Icons.check_rounded),
-              onPressed: _toggleReorderMode,
-              tooltip: 'Done reordering',
-            ),
-          ] else ...[
-            IconButton(
-              icon: Icon(
-                _document?.isFavourite == true
-                    ? Icons.favorite_rounded
-                    : Icons.favorite_border_rounded,
-                color: _document?.isFavourite == true
-                    ? Colors.red
-                    : null,
+            onPressed: () {
+              if (_reorderMode) {
+                _toggleReorderMode();
+              } else if (_selectMode) {
+                _toggleSelectMode();
+              } else if (context.canPop()) {
+                context.pop();
+              }
+            },
+          ),
+          title: Text(_reorderMode
+              ? 'Reorder pages'
+              : _selectMode
+                  ? '${_selectedImages.length} selected'
+                  : (_document?.title ?? 'Document')),
+          actions: [
+            if (_selectMode) ...[
+              IconButton(
+                icon: const Icon(Icons.select_all),
+                onPressed:
+                    _selectedImages.length == imagePaths.length
+                        ? _deselectAll
+                        : _selectAll,
+                tooltip:
+                    _selectedImages.length == imagePaths.length
+                        ? 'Deselect all'
+                        : 'Select all',
               ),
-              tooltip: _document?.isFavourite == true
-                  ? 'Remove from favourites'
-                  : 'Add to favourites',
-              onPressed: _document == null
-                  ? null
-                  : () async {
-                      await ref
-                          .read(documentServiceProvider)
-                          .toggleFavourite(
-                            widget.docId,
-                            !(_document!.isFavourite),
-                          );
-                      await _loadDocument();
-                    },
-            ),
-            IconButton(
-              icon: const Icon(Icons.checklist_rounded),
-              onPressed: _toggleSelectMode,
-              tooltip: 'Select pages',
-            ),
-            PopupMenuButton<_MenuAction>(
-              onSelected: (action) => _handleMenu(action),
-              itemBuilder: (_) => const [
-                PopupMenuItem(
-                    value: _MenuAction.reorder,
-                    child: Text('Reorder pages')),
-                PopupMenuItem(
-                    value: _MenuAction.rename,
-                    child: Text('Rename')),
-                PopupMenuItem(
-                    value: _MenuAction.delete,
-                    child: Text('Delete document')),
-              ],
-            ),
-          ],
-        ],
-      ),
-      body: !_imagesLoaded
-          ? const Center(child: CircularProgressIndicator())
-          : imagePaths.isEmpty
-              ? const AppEmptyState(
-                  icon: Icons.photo_library_outlined,
-                  title: 'No pages',
-                  subtitle:
-                      'Tap the button below to scan pages.',
-                )
-              : _reorderMode
-                  // ── Reorder mode: vertically reorderable list ──
-                  ? ReorderableListView.builder(
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 8),
-                      buildDefaultDragHandles: true,
-                      itemCount: imagePaths.length,
-                      onReorder: (oldIndex, newIndex) async {
-                        if (newIndex > oldIndex) newIndex--;
-                        final reordered =
-                            List<String>.from(imagePaths);
-                        final item =
-                            reordered.removeAt(oldIndex);
-                        reordered.insert(newIndex, item);
-                        setState(() =>
-                            _cachedImagePaths = reordered);
+            ] else if (_reorderMode) ...[
+              IconButton(
+                icon: const Icon(Icons.check_rounded),
+                onPressed: _toggleReorderMode,
+                tooltip: 'Done reordering',
+              ),
+            ] else ...[
+              IconButton(
+                icon: Icon(
+                  _document?.isFavourite == true
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
+                  color: _document?.isFavourite == true
+                      ? Colors.red
+                      : null,
+                ),
+                tooltip: _document?.isFavourite == true
+                    ? 'Remove from favourites'
+                    : 'Add to favourites',
+                onPressed: _document == null
+                    ? null
+                    : () async {
                         await ref
                             .read(documentServiceProvider)
-                            .reorderImages(
-                                widget.docId, reordered);
+                            .toggleFavourite(
+                              widget.docId,
+                              !(_document!.isFavourite),
+                            );
+                        await _loadDocument();
                       },
-                      itemBuilder: (context, index) {
-                        return _ReorderTile(
-                          key: ValueKey(
-                              imagePaths[index]),
-                          imagePath: imagePaths[index],
-                          index: index,
-                        );
-                      },
-                    )
-                  // ── Normal / select mode: 3-column grid ──
-                  : GridView.builder(
-                      padding: const EdgeInsets.all(8),
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
-                        crossAxisSpacing: 8,
-                        mainAxisSpacing: 8,
+              ),
+              if (hasImages)
+                IconButton(
+                  icon: const Icon(Icons.checklist_rounded),
+                  onPressed: _toggleSelectMode,
+                  tooltip: 'Select pages',
+                ),
+              PopupMenuButton<_MenuAction>(
+                onSelected: (action) => _handleMenu(action),
+                itemBuilder: (_) => [
+                  // Fix: only show Reorder when there are pages to reorder
+                  if (hasImages)
+                    const PopupMenuItem(
+                        value: _MenuAction.reorder,
+                        child: Text('Reorder pages')),
+                  const PopupMenuItem(
+                      value: _MenuAction.rename,
+                      child: Text('Rename')),
+                  const PopupMenuItem(
+                      value: _MenuAction.delete,
+                      child: Text('Delete document')),
+                ],
+              ),
+            ],
+          ],
+        ),
+        body: !_imagesLoaded
+            ? const Center(child: CircularProgressIndicator())
+            : imagePaths.isEmpty
+                ? const AppEmptyState(
+                    icon: Icons.photo_library_outlined,
+                    title: 'No pages',
+                    subtitle:
+                        'Tap the button below to scan pages.',
+                  )
+                : _reorderMode
+                    // ── Reorder mode: vertically reorderable list ──
+                    ? ReorderableListView.builder(
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 8),
+                        // Fix: disable default handles; we supply our own
+                        // via ReorderableDragStartListener so there is
+                        // only one handle per row, not two.
+                        buildDefaultDragHandles: false,
+                        itemCount: imagePaths.length,
+                        onReorder: (oldIndex, newIndex) async {
+                          if (newIndex > oldIndex) newIndex--;
+                          final reordered =
+                              List<String>.from(imagePaths);
+                          final item =
+                              reordered.removeAt(oldIndex);
+                          reordered.insert(newIndex, item);
+                          setState(() =>
+                              _cachedImagePaths = reordered);
+                          await ref
+                              .read(documentServiceProvider)
+                              .reorderImages(
+                                  widget.docId, reordered);
+                        },
+                        itemBuilder: (context, index) {
+                          return _ReorderTile(
+                            key: ValueKey(
+                                imagePaths[index]),
+                            imagePath: imagePaths[index],
+                            index: index,
+                          );
+                        },
+                      )
+                    // ── Normal / select mode: 3-column grid ──
+                    : GridView.builder(
+                        padding: const EdgeInsets.all(8),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          crossAxisSpacing: 8,
+                          mainAxisSpacing: 8,
+                        ),
+                        itemCount: imagePaths.length,
+                        itemBuilder: (context, index) {
+                          final imagePath = imagePaths[index];
+                          return _ImageTile(
+                            imagePath: imagePath,
+                            isSelected: _selectedImages
+                                .contains(imagePath),
+                            selectMode: _selectMode,
+                            onTap: () {
+                              if (_selectMode) {
+                                _toggleImageSelection(
+                                    imagePath);
+                              } else {
+                                _openFullScreen(context,
+                                    imagePaths, index);
+                              }
+                            },
+                            onLongPress: () {
+                              if (!_selectMode) {
+                                _toggleSelectMode();
+                                _toggleImageSelection(
+                                    imagePath);
+                              }
+                            },
+                          );
+                        },
                       ),
-                      itemCount: imagePaths.length,
-                      itemBuilder: (context, index) {
-                        final imagePath = imagePaths[index];
-                        return _ImageTile(
-                          imagePath: imagePath,
-                          isSelected: _selectedImages
-                              .contains(imagePath),
-                          selectMode: _selectMode,
-                          onTap: () {
-                            if (_selectMode) {
-                              _toggleImageSelection(
-                                  imagePath);
-                            } else {
-                              _openFullScreen(context,
-                                  imagePaths, index);
-                            }
-                          },
-                          onLongPress: () {
-                            if (!_selectMode) {
-                              _toggleSelectMode();
-                              _toggleImageSelection(
-                                  imagePath);
-                            }
-                          },
-                        );
-                      },
+        bottomNavigationBar:
+            _selectMode && _selectedImages.isNotEmpty
+                ? Container(
+                    decoration: BoxDecoration(
+                      color: cs.surface,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, -2),
+                        ),
+                      ],
                     ),
-      bottomNavigationBar:
-          _selectMode && _selectedImages.isNotEmpty
-              ? Container(
-                  decoration: BoxDecoration(
-                    color: cs.surface,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 8,
-                        offset: const Offset(0, -2),
-                      ),
-                    ],
-                  ),
-                  child: SafeArea(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      child: Row(
-                        mainAxisAlignment:
-                            MainAxisAlignment.spaceEvenly,
-                        children: [
-                          _ActionChip(
-                            icon: Icons.picture_as_pdf,
-                            label: 'PDF',
-                            color: Colors.deepOrange,
-                            onPressed: _createPdf,
-                          ),
-                          _ActionChip(
-                            icon: Icons.share,
-                            label: 'Share',
-                            color: cs.primary,
-                            onPressed: _shareSelected,
-                          ),
-                          _ActionChip(
-                            icon: Icons.delete_outline,
-                            label: 'Delete',
-                            color: Colors.red,
-                            onPressed: _deleteSelected,
-                          ),
-                        ],
+                    child: SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        child: Row(
+                          mainAxisAlignment:
+                              MainAxisAlignment.spaceEvenly,
+                          children: [
+                            _ActionChip(
+                              icon: Icons.picture_as_pdf,
+                              label: 'PDF',
+                              color: Colors.deepOrange,
+                              onPressed: _createPdf,
+                            ),
+                            _ActionChip(
+                              icon: Icons.share,
+                              label: 'Share',
+                              color: cs.primary,
+                              onPressed: _shareSelected,
+                            ),
+                            _ActionChip(
+                              icon: Icons.delete_outline,
+                              label: 'Delete',
+                              color: Colors.red,
+                              onPressed: _deleteSelected,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                )
-              : null,
-      floatingActionButton: _reorderMode
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: () async {
-                await context
-                    .push('/camera?docId=${widget.docId}');
-                if (mounted) await _loadDocument();
-              },
-              icon: const Icon(Icons.add_a_photo),
-              label: const Text('Scan Pages'),
-            ),
+                  )
+                : null,
+        floatingActionButton: _reorderMode
+            ? null
+            : FloatingActionButton.extended(
+                onPressed: () async {
+                  await context
+                      .push('/camera?docId=${widget.docId}');
+                  if (mounted) await _loadDocument();
+                },
+                icon: const Icon(Icons.add_a_photo),
+                label: const Text('Scan Pages'),
+              ),
+      ),
     );
   }
 
@@ -599,7 +624,9 @@ class _DocumentFolderPageState
 }
 
 // ---------------------------------------------------------------------------
-// Reorder mode tile — shows image thumbnail + drag handle in a row
+// Reorder mode tile — drag handle via ReorderableDragStartListener
+// Fix: buildDefaultDragHandles is false so this is the ONLY handle,
+// avoiding the double-handle overlap from the previous implementation.
 // ---------------------------------------------------------------------------
 class _ReorderTile extends StatelessWidget {
   const _ReorderTile({
@@ -651,9 +678,13 @@ class _ReorderTile extends StatelessWidget {
                 ?.copyWith(fontWeight: FontWeight.w600),
           ),
           const Spacer(),
-          const Padding(
-            padding: EdgeInsets.only(right: 12),
-            child: Icon(Icons.drag_handle_rounded),
+          // Single drag handle via ReorderableDragStartListener
+          ReorderableDragStartListener(
+            index: index,
+            child: const Padding(
+              padding: EdgeInsets.only(right: 12),
+              child: Icon(Icons.drag_handle_rounded),
+            ),
           ),
         ],
       ),
@@ -800,7 +831,6 @@ class _ImageTile extends StatelessWidget {
               File(imagePath),
               fit: BoxFit.cover,
               errorBuilder: (ctx, err, _) => Container(
-                // Dark-mode safe: use theme colour instead of hardcoded grey
                 color: cs.surfaceContainerHigh,
                 child: Icon(Icons.broken_image,
                     color: cs.onSurfaceVariant),
