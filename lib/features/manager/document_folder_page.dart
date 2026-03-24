@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:drift/drift.dart';
@@ -18,8 +17,13 @@ class DocumentFolderPage extends ConsumerStatefulWidget {
   const DocumentFolderPage({super.key, required this.docId});
   final int docId;
 
+  /// Registered as a GoRouter observer in router.dart so didPopNext fires.
+  static final RouteObserver<ModalRoute<void>> routeObserver =
+      RouteObserver<ModalRoute<void>>();
+
   @override
-  ConsumerState<DocumentFolderPage> createState() => _DocumentFolderPageState();
+  ConsumerState<DocumentFolderPage> createState() =>
+      _DocumentFolderPageState();
 }
 
 class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
@@ -30,33 +34,28 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
   List<String> _cachedImagePaths = [];
   bool _imagesLoaded = false;
 
-  // RouteObserver subscription for detecting return from camera
-  static final RouteObserver<ModalRoute<void>> routeObserver =
-      RouteObserver<ModalRoute<void>>();
-
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    routeObserver.subscribe(this, ModalRoute.of(context)!);
+    DocumentFolderPage.routeObserver
+        .subscribe(this, ModalRoute.of(context)!);
   }
 
   @override
   void dispose() {
-    routeObserver.unsubscribe(this);
+    DocumentFolderPage.routeObserver.unsubscribe(this);
     super.dispose();
   }
 
-  /// Called when this route is popped back to (e.g. returning from camera).
-  /// Reloads document + images so newly added pages appear immediately.
+  /// Fires when user pops back to this page (e.g. from camera).
   @override
-  void didPopNext() {
-    _loadDocument();
-  }
+  void didPopNext() => _loadDocument();
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadDocument());
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _loadDocument());
   }
 
   Future<void> _loadDocument() async {
@@ -95,37 +94,40 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
     });
   }
 
-  void _selectAll() {
-    setState(() => _selectedImages.addAll(_cachedImagePaths));
-  }
+  void _selectAll() =>
+      setState(() => _selectedImages.addAll(_cachedImagePaths));
 
-  void _deselectAll() {
-    setState(() => _selectedImages.clear());
-  }
+  void _deselectAll() => setState(() => _selectedImages.clear());
 
   Future<void> _createPdf() async {
     if (_document == null || _selectedImages.isEmpty) return;
 
+    // Filter to only paths that still exist on disk
+    final validPaths = _selectedImages
+        .where((path) => File(path).existsSync())
+        .toList();
+
+    if (validPaths.isEmpty) {
+      if (mounted) {
+        showSnackBar(context,
+            'No valid images selected — some may have been deleted',
+            isError: true);
+      }
+      return;
+    }
+
     try {
       final pdfService = ref.read(pdfServiceProvider);
-
-      final pdfFile = await pdfService.buildPdf(
+      final tempPdf = await pdfService.buildPdf(
         title: _document!.title,
-        imagePaths: _selectedImages.toList(),
+        imagePaths: validPaths,
         pageFormat: PdfPageFormat.a4,
       );
 
-      final docsDir = await getApplicationDocumentsDirectory();
-      final savedPdf = await pdfFile.copy(
-        '${docsDir.path}/${_sanitizeFileName(_document!.title)}.pdf',
-      );
-
-      await ref.read(documentsDaoProvider).updateDocument(
-            DocumentsCompanion(
-              id: Value(widget.docId),
-              pdfPath: Value(savedPdf.path),
-            ),
-          );
+      // Save into the document's own folder (not app root)
+      await ref
+          .read(documentServiceProvider)
+          .savePdfToDocumentFolder(widget.docId, tempPdf);
 
       if (mounted) {
         showSnackBar(context, 'PDF created successfully');
@@ -133,7 +135,8 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Failed to create PDF: $e', isError: true);
+        showSnackBar(context, 'Failed to create PDF: $e',
+            isError: true);
       }
     }
   }
@@ -153,7 +156,8 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(
+                backgroundColor: Colors.red),
             child: const Text('Delete'),
           ),
         ],
@@ -166,14 +170,24 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
       await ref
           .read(documentServiceProvider)
           .deleteImages(widget.docId, _selectedImages.toList());
+
       if (_document != null) await _loadImages(_document!.folderPath);
+
+      // Remove deleted paths from selection so no stale refs remain
+      setState(() {
+        _selectedImages
+            .removeWhere((p) => !_cachedImagePaths.contains(p));
+      });
+
       if (mounted) {
-        showSnackBar(context, 'Deleted ${_selectedImages.length} image(s)');
+        showSnackBar(context,
+            'Deleted ${_selectedImages.length} image(s)');
         _toggleSelectMode();
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Failed to delete: $e', isError: true);
+        showSnackBar(context, 'Failed to delete: $e',
+            isError: true);
       }
     }
   }
@@ -196,7 +210,8 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
       if (mounted) _toggleSelectMode();
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Failed to share: $e', isError: true);
+        showSnackBar(context, 'Failed to share: $e',
+            isError: true);
       }
     }
   }
@@ -229,9 +244,10 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
               onPressed: _selectedImages.length == imagePaths.length
                   ? _deselectAll
                   : _selectAll,
-              tooltip: _selectedImages.length == imagePaths.length
-                  ? 'Deselect all'
-                  : 'Select all',
+              tooltip:
+                  _selectedImages.length == imagePaths.length
+                      ? 'Deselect all'
+                      : 'Select all',
             ),
             IconButton(
               icon: const Icon(Icons.close),
@@ -248,7 +264,8 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
               onSelected: (action) => _handleMenu(action),
               itemBuilder: (_) => const [
                 PopupMenuItem(
-                    value: _MenuAction.rename, child: Text('Rename')),
+                    value: _MenuAction.rename,
+                    child: Text('Rename')),
                 PopupMenuItem(
                     value: _MenuAction.delete,
                     child: Text('Delete document')),
@@ -263,7 +280,8 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
               ? const AppEmptyState(
                   icon: Icons.photo_library_outlined,
                   title: 'No images',
-                  subtitle: 'Add images using the camera button below.',
+                  subtitle:
+                      'Add images using the camera button below.',
                 )
               : GridView.builder(
                   padding: const EdgeInsets.all(8),
@@ -278,13 +296,15 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                     final imagePath = imagePaths[index];
                     return _ImageTile(
                       imagePath: imagePath,
-                      isSelected: _selectedImages.contains(imagePath),
+                      isSelected:
+                          _selectedImages.contains(imagePath),
                       selectMode: _selectMode,
                       onTap: () {
                         if (_selectMode) {
                           _toggleImageSelection(imagePath);
                         } else {
-                          _openFullScreen(context, imagePaths, index);
+                          _openFullScreen(
+                              context, imagePaths, index);
                         }
                       },
                       onLongPress: () {
@@ -296,51 +316,52 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                     );
                   },
                 ),
-      bottomNavigationBar: _selectMode && _selectedImages.isNotEmpty
-          ? Container(
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
-              child: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _ActionChip(
-                        icon: Icons.picture_as_pdf,
-                        label: 'PDF',
-                        color: Colors.deepOrange,
-                        onPressed: _createPdf,
-                      ),
-                      _ActionChip(
-                        icon: Icons.share,
-                        label: 'Share',
-                        color: theme.colorScheme.primary,
-                        onPressed: _shareSelected,
-                      ),
-                      _ActionChip(
-                        icon: Icons.delete_outline,
-                        label: 'Delete',
-                        color: Colors.red,
-                        onPressed: _deleteSelected,
+      bottomNavigationBar:
+          _selectMode && _selectedImages.isNotEmpty
+              ? Container(
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 8,
+                        offset: const Offset(0, -2),
                       ),
                     ],
                   ),
-                ),
-              ),
-            )
-          : null,
+                  child: SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      child: Row(
+                        mainAxisAlignment:
+                            MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _ActionChip(
+                            icon: Icons.picture_as_pdf,
+                            label: 'PDF',
+                            color: Colors.deepOrange,
+                            onPressed: _createPdf,
+                          ),
+                          _ActionChip(
+                            icon: Icons.share,
+                            label: 'Share',
+                            color: theme.colorScheme.primary,
+                            onPressed: _shareSelected,
+                          ),
+                          _ActionChip(
+                            icon: Icons.delete_outline,
+                            label: 'Delete',
+                            color: Colors.red,
+                            onPressed: _deleteSelected,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+              : null,
       floatingActionButton: FloatingActionButton.extended(
-        // Refresh images when returning from camera
         onPressed: () => context
             .push('/camera?docId=${widget.docId}')
             .then((_) => _loadDocument()),
@@ -382,14 +403,16 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
         content: TextField(
           controller: ctrl,
           autofocus: true,
-          decoration: const InputDecoration(hintText: 'Document name'),
+          decoration:
+              const InputDecoration(hintText: 'Document name'),
         ),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx),
               child: const Text('Cancel')),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              onPressed: () =>
+                  Navigator.pop(ctx, ctrl.text.trim()),
               child: const Text('Rename')),
         ],
       ),
@@ -404,7 +427,8 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
       if (mounted) showSnackBar(context, 'Document renamed');
     } catch (e) {
       if (mounted)
-        showSnackBar(context, 'Failed to rename: $e', isError: true);
+        showSnackBar(context, 'Failed to rename: $e',
+            isError: true);
     }
   }
 
@@ -422,7 +446,8 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
               child: const Text('Cancel')),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              style: FilledButton.styleFrom(
+                  backgroundColor: Colors.red),
               child: const Text('Delete')),
         ],
       ),
@@ -430,20 +455,23 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
 
     if (confirmed != true) return;
     try {
-      await ref.read(documentServiceProvider).deleteDocument(widget.docId);
+      await ref
+          .read(documentServiceProvider)
+          .deleteDocument(widget.docId);
       if (mounted) {
         context.pop();
         showSnackBar(context, 'Document deleted');
       }
     } catch (e) {
       if (mounted)
-        showSnackBar(context, 'Failed to delete: $e', isError: true);
+        showSnackBar(context, 'Failed to delete: $e',
+            isError: true);
     }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Full-screen image viewer with swipe support
+// Full-screen image viewer
 // ---------------------------------------------------------------------------
 class _FullScreenImageViewer extends StatefulWidget {
   const _FullScreenImageViewer({
@@ -456,10 +484,12 @@ class _FullScreenImageViewer extends StatefulWidget {
   final String title;
 
   @override
-  State<_FullScreenImageViewer> createState() => _FullScreenImageViewerState();
+  State<_FullScreenImageViewer> createState() =>
+      _FullScreenImageViewerState();
 }
 
-class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
+class _FullScreenImageViewerState
+    extends State<_FullScreenImageViewer> {
   late int _currentIndex;
   late PageController _pageController;
 
@@ -467,7 +497,8 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
-    _pageController = PageController(initialPage: widget.initialIndex);
+    _pageController =
+        PageController(initialPage: widget.initialIndex);
   }
 
   @override
@@ -489,7 +520,8 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
             child: Center(
               child: Text(
                 '${_currentIndex + 1} / ${widget.imagePaths.length}',
-                style: const TextStyle(fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                    fontWeight: FontWeight.w600),
               ),
             ),
           ),
@@ -498,10 +530,11 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
       body: PageView.builder(
         controller: _pageController,
         itemCount: widget.imagePaths.length,
-        onPageChanged: (i) => setState(() => _currentIndex = i),
+        onPageChanged: (i) =>
+            setState(() => _currentIndex = i),
         itemBuilder: (ctx, i) => Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          padding: const EdgeInsets.symmetric(
+              horizontal: 16, vertical: 24),
           child: Container(
             decoration: BoxDecoration(
               color: Colors.white,
@@ -527,7 +560,8 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
                     errorBuilder: (ctx, err, _) => Center(
                       child: Text(
                         'Cannot load page ${i + 1}',
-                        style: const TextStyle(color: Colors.grey),
+                        style: const TextStyle(
+                            color: Colors.grey),
                       ),
                     ),
                   ),
@@ -584,11 +618,14 @@ class _ImageTile extends StatelessWidget {
               right: 4,
               child: Container(
                 decoration: BoxDecoration(
-                  color: isSelected ? Colors.blue : Colors.black54,
+                  color:
+                      isSelected ? Colors.blue : Colors.black54,
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
-                  isSelected ? Icons.check_circle : Icons.circle_outlined,
+                  isSelected
+                      ? Icons.check_circle
+                      : Icons.circle_outlined,
                   color: Colors.white,
                   size: 24,
                 ),
@@ -622,8 +659,8 @@ class _ActionChip extends StatelessWidget {
       onTap: onPressed,
       borderRadius: BorderRadius.circular(20),
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(
+            horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           color: color.withOpacity(0.1),
           borderRadius: BorderRadius.circular(20),

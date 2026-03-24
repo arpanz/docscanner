@@ -34,6 +34,8 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: AppRoutes.manager,
     debugLogDiagnostics: false,
     navigatorKey: _rootNavigatorKey,
+    // Register RouteObserver so DocumentFolderPage.didPopNext fires correctly
+    observers: [DocumentFolderPage.routeObserver],
     routes: [
       GoRoute(
         path: AppRoutes.manager,
@@ -43,7 +45,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.camera,
         pageBuilder: (context, state) {
-          final docId = int.tryParse(state.uri.queryParameters['docId'] ?? '');
+          final docId =
+              int.tryParse(state.uri.queryParameters['docId'] ?? '');
           return MaterialPage(child: CameraPage(existingDocId: docId));
         },
       ),

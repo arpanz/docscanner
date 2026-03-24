@@ -51,7 +51,8 @@ class DocumentManagerPage extends ConsumerWidget {
                     ? Icons.view_list_rounded
                     : Icons.grid_view_rounded),
                 onPressed: () =>
-                    ref.read(isGridViewProvider.notifier).state = !isGrid,
+                    ref.read(isGridViewProvider.notifier).state =
+                        !isGrid,
               ),
               const SizedBox(width: 8),
             ],
@@ -63,8 +64,9 @@ class DocumentManagerPage extends ConsumerWidget {
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
                     child: DocSearchBar(
                       initialValue: query,
-                      onChanged: (v) =>
-                          ref.read(searchQueryProvider.notifier).state = v,
+                      onChanged: (v) => ref
+                          .read(searchQueryProvider.notifier)
+                          .state = v,
                     ),
                   ),
                   const SortBar(),
@@ -72,11 +74,11 @@ class DocumentManagerPage extends ConsumerWidget {
               ),
             ),
           ),
-
           docsAsync.when(
-            loading: () => const SliverFillRemaining(child: AppLoading()),
+            loading: () =>
+                const SliverFillRemaining(child: AppLoading()),
             error: (e, _) => SliverFillRemaining(
-              child: Center(child: Text('Error: \$e')),
+              child: Center(child: Text('Error: $e')),
             ),
             data: (docs) {
               if (docs.isEmpty) {
@@ -85,7 +87,7 @@ class DocumentManagerPage extends ConsumerWidget {
                     icon: Icons.document_scanner_outlined,
                     title: query.isEmpty
                         ? 'No documents yet'
-                        : 'No results for "\$query"',
+                        : 'No results for "$query"',
                     subtitle: query.isEmpty
                         ? 'Tap the button below to scan your first document.'
                         : null,
@@ -106,11 +108,10 @@ class DocumentManagerPage extends ConsumerWidget {
                         itemCount: docs.length,
                         itemBuilder: (ctx, i) => DocCard(
                           document: docs[i],
-                          // Navigate directly to folder page — skips the dead viewer screen
                           onTap: () => context
                               .push(AppRoutes.folderPath(docs[i].id)),
-                          onLongPress: () =>
-                              _showDocOptions(context, ref, docs[i]),
+                          onLongPress: () => _showDocOptions(
+                              context, ref, docs[i]),
                         ),
                       )
                     : SliverList.builder(
@@ -123,38 +124,46 @@ class DocumentManagerPage extends ConsumerWidget {
                               borderRadius: BorderRadius.circular(8),
                               child: docs[i].coverImagePath != null
                                   ? Image.file(
-                                      File(docs[i].coverImagePath!),
+                                      File(docs[i]
+                                          .coverImagePath!),
                                       fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) => Container(
-                                        color: theme.colorScheme.primary
-                                            .withOpacity(0.1),
-                                        child: Icon(
-                                          Icons.description_outlined,
-                                          color: theme.colorScheme.primary,
-                                        ),
-                                      ),
+                                      errorBuilder: (_, __, ___) =>
+                                          Container(
+                                            color: theme
+                                                .colorScheme.primary
+                                                .withOpacity(0.1),
+                                            child: Icon(
+                                              Icons
+                                                  .description_outlined,
+                                              color: theme
+                                                  .colorScheme.primary,
+                                            ),
+                                          ),
                                     )
                                   : Container(
                                       color: theme.colorScheme.primary
                                           .withOpacity(0.1),
                                       child: Icon(
                                         Icons.description_outlined,
-                                        color: theme.colorScheme.primary,
+                                        color:
+                                            theme.colorScheme.primary,
                                       ),
                                     ),
                             ),
                           ),
                           title: Text(
                             docs[i].title,
-                            style: const TextStyle(fontWeight: FontWeight.w600),
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w600),
                           ),
                           subtitle: Text(
-                              '\${docs[i].imageCount} pages · \${relativeDate(docs[i].updatedAt)}'),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () => context
-                              .push(AppRoutes.folderPath(docs[i].id)),
-                          onLongPress: () =>
-                              _showDocOptions(context, ref, docs[i]),
+                              '${docs[i].imageCount} pages · ${relativeDate(docs[i].updatedAt)}'),
+                          trailing:
+                              const Icon(Icons.chevron_right),
+                          onTap: () => context.push(
+                              AppRoutes.folderPath(docs[i].id)),
+                          onLongPress: () => _showDocOptions(
+                              context, ref, docs[i]),
                         ),
                       ),
               );
@@ -185,18 +194,20 @@ class DocumentManagerPage extends ConsumerWidget {
           ],
         ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButtonLocation:
+          FloatingActionButtonLocation.centerFloat,
     );
   }
 
-  Future<void> _pickFromGallery(BuildContext context, WidgetRef ref) async {
+  Future<void> _pickFromGallery(
+      BuildContext context, WidgetRef ref) async {
     final picker = ImagePicker();
     final images = await picker.pickMultiImage(imageQuality: 90);
     if (images.isEmpty || !context.mounted) return;
 
     final paths = images.map((x) => x.path).toList();
     final ctrl = TextEditingController(
-      text: 'Document \${formatDate(DateTime.now())}',
+      text: 'Document ${formatDate(DateTime.now())}',
     );
     final title = await showDialog<String>(
       context: context,
@@ -208,38 +219,59 @@ class DocumentManagerPage extends ConsumerWidget {
               onPressed: () => Navigator.pop(ctx),
               child: const Text('Cancel')),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              onPressed: () =>
+                  Navigator.pop(ctx, ctrl.text.trim()),
               child: const Text('Save')),
         ],
       ),
     );
     if (title == null || title.isEmpty || !context.mounted) return;
 
-    final docId = await ref.read(documentServiceProvider).createDocument(
-          title: title,
-          imagePaths: paths,
-        );
-    if (context.mounted) context.push(AppRoutes.folderPath(docId));
+    // Wrap in try/catch — disk-full or compress failures show a snackbar
+    try {
+      final docId =
+          await ref.read(documentServiceProvider).createDocument(
+                title: title,
+                imagePaths: paths,
+              );
+      if (context.mounted) {
+        context.push(AppRoutes.folderPath(docId));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        showSnackBar(context, 'Failed to import images: $e',
+            isError: true);
+      }
+    }
   }
 
-  void _showDocOptions(BuildContext context, WidgetRef ref, Document doc) {
+  void _showDocOptions(
+      BuildContext context, WidgetRef ref, Document doc) {
+    // Capture scaffold messenger before entering the modal
+    // to avoid stale context issues inside callbacks.
+    final messenger = ScaffoldMessenger.of(context);
+
     showModalBottomSheet(
       context: context,
-      builder: (ctx) => SafeArea(
+      builder: (sheetCtx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.drive_file_rename_outline),
+              leading:
+                  const Icon(Icons.drive_file_rename_outline),
               title: const Text('Rename'),
               onTap: () async {
-                Navigator.pop(ctx);
-                final ctrl = TextEditingController(text: doc.title);
+                Navigator.pop(sheetCtx);
+                final ctrl =
+                    TextEditingController(text: doc.title);
+                // Use the outer context for dialogs — sheet is gone
                 final name = await showDialog<String>(
                   context: context,
                   builder: (d) => AlertDialog(
                     title: const Text('Rename document'),
-                    content: TextField(controller: ctrl, autofocus: true),
+                    content:
+                        TextField(controller: ctrl, autofocus: true),
                     actions: [
                       TextButton(
                           onPressed: () => Navigator.pop(d),
@@ -252,9 +284,16 @@ class DocumentManagerPage extends ConsumerWidget {
                   ),
                 );
                 if (name != null && name.isNotEmpty) {
-                  await ref
-                      .read(documentServiceProvider)
-                      .renameDocument(doc.id, name);
+                  try {
+                    await ref
+                        .read(documentServiceProvider)
+                        .renameDocument(doc.id, name);
+                  } catch (e) {
+                    messenger.showSnackBar(SnackBar(
+                      content: Text('Failed to rename: $e'),
+                      backgroundColor: Colors.red,
+                    ));
+                  }
                 }
               },
             ),
@@ -264,19 +303,27 @@ class DocumentManagerPage extends ConsumerWidget {
                   color: Theme.of(context).colorScheme.error),
               title: Text('Delete',
                   style: TextStyle(
-                      color: Theme.of(context).colorScheme.error)),
+                      color:
+                          Theme.of(context).colorScheme.error)),
               onTap: () async {
-                Navigator.pop(ctx);
+                Navigator.pop(sheetCtx);
                 final ok = await confirmDialog(
                   context,
                   title: 'Delete document',
                   message:
-                      'Delete "\${doc.title}"? This cannot be undone.',
+                      'Delete "${doc.title}"? This cannot be undone.',
                 );
                 if (ok) {
-                  await ref
-                      .read(documentServiceProvider)
-                      .deleteDocument(doc.id);
+                  try {
+                    await ref
+                        .read(documentServiceProvider)
+                        .deleteDocument(doc.id);
+                  } catch (e) {
+                    messenger.showSnackBar(SnackBar(
+                      content: Text('Failed to delete: $e'),
+                      backgroundColor: Colors.red,
+                    ));
+                  }
                 }
               },
             ),
@@ -287,8 +334,9 @@ class DocumentManagerPage extends ConsumerWidget {
   }
 }
 
-// ── Gradient FAB ─────────────────────────────────────────────────────────────
-
+// ---------------------------------------------------------------------------
+// Gradient FAB
+// ---------------------------------------------------------------------------
 class _GradientFAB extends StatelessWidget {
   const _GradientFAB({required this.onPressed});
   final VoidCallback onPressed;
@@ -321,8 +369,8 @@ class _GradientFAB extends StatelessWidget {
           borderRadius: BorderRadius.circular(32),
           onTap: onPressed,
           child: const Padding(
-            padding:
-                EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+            padding: EdgeInsets.symmetric(
+                horizontal: 28, vertical: 16),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [

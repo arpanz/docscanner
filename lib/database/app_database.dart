@@ -18,22 +18,49 @@ part 'app_database.g.dart';
 @DriftDatabase(tables: [Documents], daos: [DocumentsDao])
 class AppDatabase extends _$AppDatabase {
   AppDatabase._internal([QueryExecutor? executor])
-    : super(executor ?? _openConnection());
+      : super(executor ?? _openConnection());
 
   @override
   int get schemaVersion => 3;
 
+  /// Migration history:
+  ///   v1 → initial schema (id, title, createdAt, updatedAt, folderPath)
+  ///   v2 → added pdfPath, imageCount, coverImagePath
+  ///   v3 → added isFavourite
+  ///
+  /// NEVER drop tables on upgrade — that deletes user data.
+  /// Always use additive migrations (addColumn / createTable).
   @override
   MigrationStrategy get migration => MigrationStrategy(
-    onCreate: (m) => m.createAll(),
-    onUpgrade: (m, from, to) async {
-      // Drop old tables and recreate for fresh start
-      for (final table in allTables) {
-        await m.drop(table);
-      }
-      await m.createAll();
-    },
-  );
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          await m.runMigrationSteps(
+            from: from,
+            to: to,
+            steps: MigrationStepWithVersion(
+              (stepFrom, stepTo, migrator) async {
+                if (stepFrom == 1) {
+                  // v1 → v2: add pdfPath, imageCount, coverImagePath
+                  await migrator.addColumn(
+                      documents, documents.pdfPath);
+                  await migrator.addColumn(
+                      documents, documents.imageCount);
+                  await migrator.addColumn(
+                      documents, documents.coverImagePath);
+                }
+                if (stepFrom == 2) {
+                  // v2 → v3: add isFavourite
+                  await migrator.addColumn(
+                      documents, documents.isFavourite);
+                }
+              },
+            ),
+          );
+        },
+        beforeOpen: (details) async {
+          await customStatement('PRAGMA foreign_keys = ON');
+        },
+      );
 }
 
 // Singleton instance
@@ -56,12 +83,12 @@ LazyDatabase _openConnection() {
 }
 
 // ---------------------------------------------------------------------------
-// Riverpod provider
+// Riverpod providers
 // ---------------------------------------------------------------------------
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
   final db = getDatabase();
   ref.onDispose(() {
-    // Don't close the singleton database
+    // Don't close the singleton
   });
   return db;
 });

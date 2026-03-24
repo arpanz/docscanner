@@ -33,7 +33,7 @@ class DocumentService {
     required List<String> imagePaths,
   }) async {
     final docsDir = await _documentsDir();
-    final folderName = '\${_sanitize(title)}_\${_uuid.v4().substring(0, 8)}';
+    final folderName = '${_sanitize(title)}_${_uuid.v4().substring(0, 8)}';
     final folderPath = p.join(docsDir.path, folderName);
     final folder = Directory(folderPath);
     await folder.create(recursive: true);
@@ -62,13 +62,13 @@ class DocumentService {
     required int pageCount,
   }) async {
     final docsDir = await _documentsDir();
-    final folderName = '\${_sanitize(title)}_\${_uuid.v4().substring(0, 8)}';
+    final folderName = '${_sanitize(title)}_${_uuid.v4().substring(0, 8)}';
     final folderPath = p.join(docsDir.path, folderName);
     final folder = Directory(folderPath);
     await folder.create(recursive: true);
 
     final cleanPath = cleanFilePath(pdfPath);
-    final pdfDest = p.join(folderPath, '\${_sanitize(title)}.pdf');
+    final pdfDest = p.join(folderPath, '${_sanitize(title)}.pdf');
     await File(cleanPath).copy(pdfDest);
 
     final docId = await _docsDao.insertDocument(
@@ -118,6 +118,8 @@ class DocumentService {
     await _docsDao.refreshDocumentMeta(docId, doc.folderPath);
   }
 
+  /// Renames the document title and folder. Also updates pdfPath if it
+  /// lives inside the old folder, so no stale paths remain in the DB.
   Future<void> renameDocument(int docId, String newTitle) async {
     final doc = await _docsDao.getDocument(docId);
     if (doc == null) return;
@@ -126,14 +128,27 @@ class DocumentService {
     if (await oldFolder.exists()) {
       final parentDir = oldFolder.parent;
       final folderName =
-          '\${_sanitize(newTitle)}_\${_uuid.v4().substring(0, 8)}';
+          '${_sanitize(newTitle)}_${_uuid.v4().substring(0, 8)}';
       final newFolderPath = p.join(parentDir.path, folderName);
       await oldFolder.rename(newFolderPath);
+
+      // Recalculate pdfPath if it was inside the old folder
+      String? newPdfPath;
+      if (doc.pdfPath != null &&
+          doc.pdfPath!.startsWith(doc.folderPath)) {
+        final relativePdf =
+            doc.pdfPath!.substring(doc.folderPath.length);
+        newPdfPath = newFolderPath + relativePdf;
+      }
+
       await _docsDao.updateDocument(
         DocumentsCompanion(
           id: Value(docId),
           title: Value(newTitle),
           folderPath: Value(newFolderPath),
+          pdfPath: newPdfPath != null
+              ? Value(newPdfPath)
+              : const Value.absent(),
           updatedAt: Value(DateTime.now()),
         ),
       );
@@ -168,22 +183,49 @@ class DocumentService {
     return images;
   }
 
+  /// Saves a built PDF into the document's own folder (not the app root).
+  /// Returns the path of the saved PDF.
+  /// Naming includes a timestamp to avoid silent overwrites.
+  Future<String> savePdfToDocumentFolder(
+      int docId, File tempPdf) async {
+    final doc = await _docsDao.getDocument(docId);
+    if (doc == null) throw Exception('Document not found');
+
+    final timestamp =
+        DateTime.now().millisecondsSinceEpoch.toString();
+    final dest = p.join(
+      doc.folderPath,
+      '${_sanitize(doc.title)}_$timestamp.pdf',
+    );
+    final saved = await tempPdf.copy(dest);
+
+    // Update pdfPath in DB
+    await _docsDao.updateDocument(
+      DocumentsCompanion(
+        id: Value(docId),
+        pdfPath: Value(saved.path),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+    return saved.path;
+  }
+
   /// Reorder images using a temp-rename strategy to avoid name conflicts.
   Future<void> reorderImages(int docId, List<String> orderedPaths) async {
     final doc = await _docsDao.getDocument(docId);
     if (doc == null) return;
 
-    // Step 1 — rename all to temp names to avoid conflicts
+    // Step 1 — rename all to temp names
     final tempPaths = <String>[];
     for (var i = 0; i < orderedPaths.length; i++) {
       final file = File(orderedPaths[i]);
       if (await file.exists()) {
         final ext = p.extension(orderedPaths[i]);
-        final tempPath = p.join(doc.folderPath, 'tmp_\$i\$ext');
+        final tempPath = p.join(doc.folderPath, 'tmp_$i$ext');
         await file.rename(tempPath);
         tempPaths.add(tempPath);
       } else {
-        tempPaths.add(orderedPaths[i]); // keep original if missing
+        tempPaths.add(orderedPaths[i]);
       }
     }
 
@@ -192,8 +234,8 @@ class DocumentService {
       final file = File(tempPaths[i]);
       if (await file.exists()) {
         final ext = p.extension(tempPaths[i]);
-        final finalPath =
-            p.join(doc.folderPath, '\${i.toString().padLeft(4, '0')}\$ext');
+        final finalPath = p.join(
+            doc.folderPath, '${i.toString().padLeft(4, '0')}$ext');
         await file.rename(finalPath);
       }
     }
@@ -201,8 +243,8 @@ class DocumentService {
     await _docsDao.refreshDocumentMeta(docId, doc.folderPath);
   }
 
-  Future<void> _addImages(String folderPath, List<String> imagePaths) async {
-    // Find the highest existing index to avoid overwriting existing files
+  Future<void> _addImages(
+      String folderPath, List<String> imagePaths) async {
     final existing = Directory(folderPath)
         .listSync()
         .whereType<File>()
@@ -220,13 +262,13 @@ class DocumentService {
       final idx = existing + i;
       final dest = p.join(
         folderPath,
-        '\${idx.toString().padLeft(4, '0')}\${ext == '.pdf' ? '.jpg' : ext}',
+        '${idx.toString().padLeft(4, '0')}${ext == '.pdf' ? '.jpg' : ext}',
       );
       try {
         await _compressAndSave(src, dest);
         successfullyAdded.add(dest);
       } catch (e) {
-        debugPrint('Failed to save image \$i: \$e');
+        debugPrint('Failed to save image $i: $e');
       }
     }
 

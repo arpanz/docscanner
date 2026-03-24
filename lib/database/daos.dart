@@ -8,7 +8,7 @@ part 'daos.g.dart';
 
 @DriftAccessor(tables: [Documents])
 class DocumentsDao extends DatabaseAccessor<AppDatabase>
-    with _\$DocumentsDaoMixin {
+    with _$DocumentsDaoMixin {
   DocumentsDao(super.db);
 
   Stream<List<Document>> watchAllDocuments() => (select(
@@ -40,7 +40,8 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
   }
 
   /// Refreshes imageCount, coverImagePath, and updatedAt from the folder.
-  /// For PDF-only documents (no images), uses the PDF file as the cover indicator.
+  /// Uses async list() to avoid blocking the main thread.
+  /// For PDF-only documents, sets imageCount = 1 so sorting works.
   Future<void> refreshDocumentMeta(int docId, String folderPath) async {
     final folder = Directory(folderPath);
     if (!await folder.exists()) {
@@ -54,7 +55,12 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
       return;
     }
 
-    final allFiles = folder.listSync().whereType<File>().toList();
+    // Use async listing — never block the main thread
+    final allFiles = await folder
+        .list()
+        .where((e) => e is File)
+        .cast<File>()
+        .toList();
 
     final images = allFiles
         .where((f) =>
@@ -64,18 +70,14 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
         .toList()
       ..sort((a, b) => a.path.compareTo(b.path));
 
-    // If no images, check for PDF
     if (images.isEmpty) {
-      final pdf = allFiles.firstWhere(
-        (f) => f.path.toLowerCase().endsWith('.pdf'),
-        orElse: () => File(''),
-      );
-      final hasPdf = pdf.path.isNotEmpty && await pdf.exists();
+      final pdf = allFiles.where(
+          (f) => f.path.toLowerCase().endsWith('.pdf'));
+      final hasPdf = pdf.isNotEmpty && await pdf.first.exists();
       await (update(documents)..where((d) => d.id.equals(docId))).write(
         DocumentsCompanion(
-          // Count PDF pages as 1 so sort works
           imageCount: Value(hasPdf ? 1 : 0),
-          coverImagePath: const Value(null), // PDF has no image cover
+          coverImagePath: const Value(null),
           updatedAt: Value(DateTime.now()),
         ),
       );
