@@ -26,8 +26,9 @@ class _CameraPageState extends ConsumerState<CameraPage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => _requestPermissionsAndScan());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _requestPermissionsAndScan(),
+    );
   }
 
   void _safePop() {
@@ -80,8 +81,8 @@ class _CameraPageState extends ConsumerState<CameraPage> {
 
   Future<void> _scan() async {
     try {
-      final PdfScanResult? result =
-          await FlutterDocScanner().getScannedDocumentAsPdf(page: 10);
+      final PdfScanResult? result = await FlutterDocScanner()
+          .getScannedDocumentAsPdf(page: 10);
 
       if (!mounted) return;
       if (result == null) {
@@ -155,8 +156,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       int pageIndex = 0;
       await for (final page in rasters) {
         final png = await page.toPng();
-        final outPath =
-            p.join(tempDir.path, 'scan_append_${pageIndex++}.png');
+        final outPath = p.join(tempDir.path, 'scan_append_${pageIndex++}.png');
         await File(outPath).writeAsBytes(png);
         imagePaths.add(outPath);
       }
@@ -169,8 +169,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       }
 
       if (mounted) {
-        showSnackBar(
-            context, 'Added $pageCount page(s) to document');
+        showSnackBar(context, 'Added $pageCount page(s) to document');
         _safePop();
       }
     } catch (e) {
@@ -183,7 +182,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
 
   Future<String?> _promptTitle() async {
     // Use a timeout to avoid hanging if the DB stream stalls
-    final List<Document> docs;
+    List<Document> docs;
     try {
       docs = await ref
           .read(documentsDaoProvider)
@@ -220,10 +219,9 @@ class _CameraPageState extends ConsumerState<CameraPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(
-                ctx,
-                ctrl.text.trim().isEmpty
-                    ? title
-                    : ctrl.text.trim()),
+              ctx,
+              ctrl.text.trim().isEmpty ? title : ctrl.text.trim(),
+            ),
             child: const Text('Use Default'),
           ),
           FilledButton(
