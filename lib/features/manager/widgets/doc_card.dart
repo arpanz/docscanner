@@ -26,9 +26,6 @@ class DocCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-
-    // Always use an explicit, unique hero tag to avoid collision
-    // when the same document appears in multiple lists simultaneously.
     final tag = heroTag ?? 'doc_card_${document.id}';
 
     return GestureDetector(
@@ -188,7 +185,6 @@ class DocCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  // Footer — shows total folder size (not just cover image)
                   Padding(
                     padding:
                         const EdgeInsets.fromLTRB(14, 12, 14, 14),
@@ -222,8 +218,7 @@ class DocCard extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Footer: computes total folder size once via StatefulWidget (not FutureBuilder)
-// so rebuilds don't retrigger the async work.
+// Footer
 // ---------------------------------------------------------------------------
 class _DocCardFooter extends StatefulWidget {
   const _DocCardFooter({required this.document});
@@ -251,7 +246,6 @@ class _DocCardFooterState extends State<_DocCardFooter> {
     }
   }
 
-  /// Sums all file sizes inside the document folder.
   Future<int> _computeFolderSize(String folderPath) async {
     try {
       final folder = Directory(folderPath);
@@ -274,14 +268,16 @@ class _DocCardFooterState extends State<_DocCardFooter> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final count = widget.document.imageCount;
+    // Fix: "1 page" not "1 pages"
+    final pageLabel = '$count ${count == 1 ? 'page' : 'pages'}';
     return FutureBuilder<int>(
       future: _sizeFuture,
       builder: (context, snapshot) {
         final sizeStr =
             snapshot.hasData ? formatBytes(snapshot.data!) : '…';
-        // Use 'images' consistently with the sort chip label
         return Text(
-          '${widget.document.imageCount} images · $sizeStr',
+          '$pageLabel · $sizeStr',
           style: tt.labelSmall?.copyWith(
             color: cs.onSurface.withOpacity(0.6),
             fontWeight: FontWeight.w500,
@@ -294,8 +290,7 @@ class _DocCardFooterState extends State<_DocCardFooter> {
 }
 
 // ---------------------------------------------------------------------------
-// PDF Thumbnail — StatefulWidget stores the Future in initState so
-// it is NOT re-created on every rebuild / scroll.
+// PDF Thumbnail
 // ---------------------------------------------------------------------------
 class _PdfThumbnail extends StatefulWidget {
   const _PdfThumbnail({required this.path});

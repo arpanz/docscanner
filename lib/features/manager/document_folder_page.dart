@@ -28,6 +28,7 @@ class DocumentFolderPage extends ConsumerStatefulWidget {
 class _DocumentFolderPageState
     extends ConsumerState<DocumentFolderPage> with RouteAware {
   bool _selectMode = false;
+  bool _reorderMode = false;
   final Set<String> _selectedImages = {};
   Document? _document;
   List<String> _cachedImagePaths = [];
@@ -79,7 +80,16 @@ class _DocumentFolderPageState
   void _toggleSelectMode() {
     setState(() {
       _selectMode = !_selectMode;
+      _reorderMode = false;
       if (!_selectMode) _selectedImages.clear();
+    });
+  }
+
+  void _toggleReorderMode() {
+    setState(() {
+      _reorderMode = !_reorderMode;
+      _selectMode = false;
+      _selectedImages.clear();
     });
   }
 
@@ -116,7 +126,6 @@ class _DocumentFolderPageState
       return;
     }
 
-    // Warn the user how many images will be included
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -144,13 +153,37 @@ class _DocumentFolderPageState
         pageFormat: PdfPageFormat.a4,
       );
 
-      await ref
+      final savedPath = await ref
           .read(documentServiceProvider)
           .savePdfToDocumentFolder(widget.docId, tempPdf);
 
       if (mounted) {
-        showSnackBar(context, 'PDF created successfully');
         _toggleSelectMode();
+        // Offer a direct "View PDF" action in the snackbar
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: const Text('PDF created successfully'),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+              action: SnackBarAction(
+                label: 'View',
+                onPressed: () async {
+                  await SharePlus.instance.share(
+                    ShareParams(
+                      files: [
+                        XFile(savedPath,
+                            mimeType: 'application/pdf')
+                      ],
+                      subject: _document?.title,
+                    ),
+                  );
+                },
+              ),
+            ),
+          );
       }
     } catch (e) {
       if (mounted) {
@@ -163,13 +196,13 @@ class _DocumentFolderPageState
   Future<void> _deleteSelected() async {
     if (_document == null || _selectedImages.isEmpty) return;
 
-    // Capture count BEFORE clearing selection
+    // Capture count BEFORE any state changes
     final deleteCount = _selectedImages.length;
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Delete $deleteCount image(s)?'),
+        title: Text('Delete $deleteCount image${deleteCount == 1 ? '' : 's'}?'),
         content: const Text('This action cannot be undone.'),
         actions: [
           TextButton(
@@ -201,9 +234,9 @@ class _DocumentFolderPageState
       });
 
       if (mounted) {
-        // Use the captured count, not the now-pruned set size
         showSnackBar(
-            context, 'Deleted $deleteCount image(s)');
+            context,
+            'Deleted $deleteCount image${deleteCount == 1 ? '' : 's'}');
         _toggleSelectMode();
       }
     } catch (e) {
@@ -246,7 +279,6 @@ class _DocumentFolderPageState
     final imagePaths = _cachedImagePaths;
 
     return Scaffold(
-      // Use theme surface — respects dark mode
       backgroundColor: cs.surfaceContainerLow,
       appBar: AppBar(
         backgroundColor: cs.surface,
@@ -277,8 +309,13 @@ class _DocumentFolderPageState
               onPressed: _toggleSelectMode,
               tooltip: 'Done',
             ),
+          ] else if (_reorderMode) ...[
+            IconButton(
+              icon: const Icon(Icons.check_rounded),
+              onPressed: _toggleReorderMode,
+              tooltip: 'Done reordering',
+            ),
           ] else ...[
-            // Favourites toggle
             IconButton(
               icon: Icon(
                 _document?.isFavourite == true
@@ -306,11 +343,14 @@ class _DocumentFolderPageState
             IconButton(
               icon: const Icon(Icons.checklist_rounded),
               onPressed: _toggleSelectMode,
-              tooltip: 'Select images',
+              tooltip: 'Select pages',
             ),
             PopupMenuButton<_MenuAction>(
               onSelected: (action) => _handleMenu(action),
               itemBuilder: (_) => const [
+                PopupMenuItem(
+                    value: _MenuAction.reorder,
+                    child: Text('Reorder pages')),
                 PopupMenuItem(
                     value: _MenuAction.rename,
                     child: Text('Rename')),
@@ -327,58 +367,76 @@ class _DocumentFolderPageState
           : imagePaths.isEmpty
               ? const AppEmptyState(
                   icon: Icons.photo_library_outlined,
-                  title: 'No images',
+                  title: 'No pages',
                   subtitle:
-                      'Add images using the camera button below.',
+                      'Tap the button below to scan pages.',
                 )
-              : ReorderableListView.builder(
-                  padding: const EdgeInsets.all(8),
-                  // Use a nested grid via a custom approach:
-                  // ReorderableListView doesn't support grids natively,
-                  // so we use a GridView wrapped in a single-column
-                  // ReorderableListView only when select mode is off.
-                  // For simplicity, keep GridView during select mode
-                  // and show a drag-hint banner when not.
-                  buildDefaultDragHandles: !_selectMode,
-                  itemCount: imagePaths.length,
-                  onReorder: (oldIndex, newIndex) async {
-                    if (_selectMode) return;
-                    if (newIndex > oldIndex) newIndex--;
-                    final reordered =
-                        List<String>.from(imagePaths);
-                    final item = reordered.removeAt(oldIndex);
-                    reordered.insert(newIndex, item);
-                    setState(
-                        () => _cachedImagePaths = reordered);
-                    await ref
-                        .read(documentServiceProvider)
-                        .reorderImages(widget.docId, reordered);
-                  },
-                  itemBuilder: (context, index) {
-                    final imagePath = imagePaths[index];
-                    return _ImageTile(
-                      key: ValueKey(imagePath),
-                      imagePath: imagePath,
-                      isSelected: _selectedImages
-                          .contains(imagePath),
-                      selectMode: _selectMode,
-                      onTap: () {
-                        if (_selectMode) {
-                          _toggleImageSelection(imagePath);
-                        } else {
-                          _openFullScreen(
-                              context, imagePaths, index);
-                        }
+              : _reorderMode
+                  // ── Reorder mode: vertically reorderable list ──
+                  ? ReorderableListView.builder(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 8),
+                      buildDefaultDragHandles: true,
+                      itemCount: imagePaths.length,
+                      onReorder: (oldIndex, newIndex) async {
+                        if (newIndex > oldIndex) newIndex--;
+                        final reordered =
+                            List<String>.from(imagePaths);
+                        final item =
+                            reordered.removeAt(oldIndex);
+                        reordered.insert(newIndex, item);
+                        setState(() =>
+                            _cachedImagePaths = reordered);
+                        await ref
+                            .read(documentServiceProvider)
+                            .reorderImages(
+                                widget.docId, reordered);
                       },
-                      onLongPress: () {
-                        if (!_selectMode) {
-                          _toggleSelectMode();
-                          _toggleImageSelection(imagePath);
-                        }
+                      itemBuilder: (context, index) {
+                        return _ReorderTile(
+                          key: ValueKey(
+                              imagePaths[index]),
+                          imagePath: imagePaths[index],
+                          index: index,
+                        );
                       },
-                    );
-                  },
-                ),
+                    )
+                  // ── Normal / select mode: 3-column grid ──
+                  : GridView.builder(
+                      padding: const EdgeInsets.all(8),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 8,
+                      ),
+                      itemCount: imagePaths.length,
+                      itemBuilder: (context, index) {
+                        final imagePath = imagePaths[index];
+                        return _ImageTile(
+                          imagePath: imagePath,
+                          isSelected: _selectedImages
+                              .contains(imagePath),
+                          selectMode: _selectMode,
+                          onTap: () {
+                            if (_selectMode) {
+                              _toggleImageSelection(
+                                  imagePath);
+                            } else {
+                              _openFullScreen(context,
+                                  imagePaths, index);
+                            }
+                          },
+                          onLongPress: () {
+                            if (!_selectMode) {
+                              _toggleSelectMode();
+                              _toggleImageSelection(
+                                  imagePath);
+                            }
+                          },
+                        );
+                      },
+                    ),
       bottomNavigationBar:
           _selectMode && _selectedImages.isNotEmpty
               ? Container(
@@ -424,18 +482,17 @@ class _DocumentFolderPageState
                   ),
                 )
               : null,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          await context
-              .push('/camera?docId=${widget.docId}');
-          // Refresh after returning from camera.
-          // _safePop in CameraPage triggers didPopNext via RouteAware
-          // but call _loadDocument explicitly as a safety net.
-          if (mounted) await _loadDocument();
-        },
-        icon: const Icon(Icons.add_a_photo),
-        label: const Text('Add Images'),
-      ),
+      floatingActionButton: _reorderMode
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () async {
+                await context
+                    .push('/camera?docId=${widget.docId}');
+                if (mounted) await _loadDocument();
+              },
+              icon: const Icon(Icons.add_a_photo),
+              label: const Text('Scan Pages'),
+            ),
     );
   }
 
@@ -455,6 +512,8 @@ class _DocumentFolderPageState
   Future<void> _handleMenu(_MenuAction action) async {
     if (_document == null) return;
     switch (action) {
+      case _MenuAction.reorder:
+        _toggleReorderMode();
       case _MenuAction.rename:
         await _renameDocument();
       case _MenuAction.delete:
@@ -540,6 +599,69 @@ class _DocumentFolderPageState
 }
 
 // ---------------------------------------------------------------------------
+// Reorder mode tile — shows image thumbnail + drag handle in a row
+// ---------------------------------------------------------------------------
+class _ReorderTile extends StatelessWidget {
+  const _ReorderTile({
+    super.key,
+    required this.imagePath,
+    required this.index,
+  });
+
+  final String imagePath;
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      height: 72,
+      margin: const EdgeInsets.symmetric(
+          horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(12),
+              bottomLeft: Radius.circular(12),
+            ),
+            child: SizedBox(
+              width: 56,
+              height: 72,
+              child: Image.file(
+                File(imagePath),
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Icon(
+                  Icons.broken_image_outlined,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            'Page ${index + 1}',
+            style: Theme.of(context)
+                .textTheme
+                .bodyMedium
+                ?.copyWith(fontWeight: FontWeight.w600),
+          ),
+          const Spacer(),
+          const Padding(
+            padding: EdgeInsets.only(right: 12),
+            child: Icon(Icons.drag_handle_rounded),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Full-screen image viewer
 // ---------------------------------------------------------------------------
 class _FullScreenImageViewer extends StatefulWidget {
@@ -580,7 +702,6 @@ class _FullScreenImageViewerState
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      // Use theme colour — respects dark mode
       backgroundColor: cs.surface,
       appBar: AppBar(
         backgroundColor: cs.surface,
@@ -621,7 +742,6 @@ class _FullScreenImageViewerState
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: InteractiveViewer(
-                // 0.5 allows pinch-to-zoom-out for landscape images
                 minScale: 0.5,
                 maxScale: 4.0,
                 child: Center(
@@ -648,11 +768,10 @@ class _FullScreenImageViewerState
 }
 
 // ---------------------------------------------------------------------------
-// Image Tile
+// Image Tile (3-col grid)
 // ---------------------------------------------------------------------------
 class _ImageTile extends StatelessWidget {
   const _ImageTile({
-    super.key,
     required this.imagePath,
     required this.isSelected,
     required this.selectMode,
@@ -668,6 +787,7 @@ class _ImageTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: onTap,
       onLongPress: onLongPress,
@@ -680,8 +800,10 @@ class _ImageTile extends StatelessWidget {
               File(imagePath),
               fit: BoxFit.cover,
               errorBuilder: (ctx, err, _) => Container(
-                color: Colors.grey[300],
-                child: const Icon(Icons.broken_image),
+                // Dark-mode safe: use theme colour instead of hardcoded grey
+                color: cs.surfaceContainerHigh,
+                child: Icon(Icons.broken_image,
+                    color: cs.onSurfaceVariant),
               ),
             ),
           ),
@@ -759,4 +881,4 @@ class _ActionChip extends StatelessWidget {
   }
 }
 
-enum _MenuAction { rename, delete }
+enum _MenuAction { reorder, rename, delete }

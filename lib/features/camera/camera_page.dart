@@ -140,7 +140,6 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       final tempDir = await getTemporaryDirectory();
       final imagePaths = <String>[];
 
-      // Use timestamp prefix to avoid name collision on concurrent appends
       final prefix = DateTime.now().millisecondsSinceEpoch;
       final rasters = Printing.raster(pdfBytes, dpi: 150);
       int pageIndex = 0;
@@ -159,7 +158,8 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       }
 
       if (mounted) {
-        showSnackBar(context, 'Added $pageCount page(s) to document');
+        showSnackBar(context,
+            'Added $pageCount page${pageCount == 1 ? '' : 's'} to document');
         _safePop();
       }
     } catch (e) {
@@ -208,11 +208,9 @@ class _CameraPageState extends ConsumerState<CameraPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(
-                ctx,
-                ctrl.text.trim().isEmpty
-                    ? title
-                    : ctrl.text.trim()),
+            // Fix: "Use Default" always returns the generated title,
+            // ignoring any edits the user may have made.
+            onPressed: () => Navigator.pop(ctx, title),
             child: const Text('Use Default'),
           ),
           FilledButton(

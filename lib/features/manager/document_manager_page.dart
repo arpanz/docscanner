@@ -43,7 +43,6 @@ class DocumentManagerPage extends ConsumerWidget {
               ),
             ),
             actions: [
-              // Favourites filter toggle
               IconButton(
                 icon: Icon(
                   showFavs
@@ -141,60 +140,64 @@ class DocumentManagerPage extends ConsumerWidget {
                       )
                     : SliverList.builder(
                         itemCount: docs.length,
-                        itemBuilder: (ctx, i) => ListTile(
-                          leading: SizedBox(
-                            width: 56,
-                            height: 64,
-                            child: ClipRRect(
-                              borderRadius:
-                                  BorderRadius.circular(8),
-                              child: docs[i].coverImagePath !=
-                                      null
-                                  ? Image.file(
-                                      File(docs[i]
-                                          .coverImagePath!),
-                                      fit: BoxFit.cover,
-                                      errorBuilder:
-                                          (_, __, ___) =>
-                                              Container(
-                                        color: theme
-                                            .colorScheme.primary
+                        itemBuilder: (ctx, i) {
+                          final count = docs[i].imageCount;
+                          return ListTile(
+                            leading: SizedBox(
+                              width: 56,
+                              height: 64,
+                              child: ClipRRect(
+                                borderRadius:
+                                    BorderRadius.circular(8),
+                                child: docs[i].coverImagePath !=
+                                        null
+                                    ? Image.file(
+                                        File(docs[i]
+                                            .coverImagePath!),
+                                        fit: BoxFit.cover,
+                                        errorBuilder:
+                                            (_, __, ___) =>
+                                                Container(
+                                          color: theme
+                                              .colorScheme.primary
+                                              .withOpacity(0.1),
+                                          child: Icon(
+                                            Icons
+                                                .description_outlined,
+                                            color: theme.colorScheme
+                                                .primary,
+                                          ),
+                                        ),
+                                      )
+                                    : Container(
+                                        color: theme.colorScheme
+                                            .primary
                                             .withOpacity(0.1),
                                         child: Icon(
-                                          Icons
-                                              .description_outlined,
-                                          color: theme.colorScheme
-                                              .primary,
+                                          Icons.description_outlined,
+                                          color:
+                                              theme.colorScheme.primary,
                                         ),
                                       ),
-                                    )
-                                  : Container(
-                                      color: theme.colorScheme
-                                          .primary
-                                          .withOpacity(0.1),
-                                      child: Icon(
-                                        Icons.description_outlined,
-                                        color:
-                                            theme.colorScheme.primary,
-                                      ),
-                                    ),
+                              ),
                             ),
-                          ),
-                          title: Text(
-                            docs[i].title,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w600),
-                          ),
-                          subtitle: Text(
-                            '${docs[i].imageCount} images · ${relativeDate(docs[i].updatedAt)}',
-                          ),
-                          trailing:
-                              const Icon(Icons.chevron_right),
-                          onTap: () => context.push(
-                              AppRoutes.folderPath(docs[i].id)),
-                          onLongPress: () => _showDocOptions(
-                              context, ref, docs[i]),
-                        ),
+                            title: Text(
+                              docs[i].title,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600),
+                            ),
+                            subtitle: Text(
+                              // Fix: "1 page" not "1 pages"
+                              '$count ${count == 1 ? 'page' : 'pages'} · ${relativeDate(docs[i].updatedAt)}',
+                            ),
+                            trailing:
+                                const Icon(Icons.chevron_right),
+                            onTap: () => context.push(
+                                AppRoutes.folderPath(docs[i].id)),
+                            onLongPress: () => _showDocOptions(
+                                context, ref, docs[i]),
+                          );
+                        },
                       ),
               );
             },
@@ -344,13 +347,29 @@ class DocumentManagerPage extends ConsumerWidget {
                           .error)),
               onTap: () async {
                 Navigator.pop(sheetCtx);
-                final ok = await confirmDialog(
-                  context,
-                  title: 'Delete document',
-                  message:
-                      'Delete "${doc.title}"? This cannot be undone.',
+                // Use a proper AlertDialog with red FilledButton
+                // for consistency with all other delete dialogs.
+                final ok = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Delete document?'),
+                    content: Text(
+                        'Delete "${doc.title}"? This cannot be undone.'),
+                    actions: [
+                      TextButton(
+                          onPressed: () =>
+                              Navigator.pop(ctx, false),
+                          child: const Text('Cancel')),
+                      FilledButton(
+                          onPressed: () =>
+                              Navigator.pop(ctx, true),
+                          style: FilledButton.styleFrom(
+                              backgroundColor: Colors.red),
+                          child: const Text('Delete')),
+                    ],
+                  ),
                 );
-                if (ok) {
+                if (ok == true) {
                   try {
                     await ref
                         .read(documentServiceProvider)
