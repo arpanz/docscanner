@@ -1,12 +1,8 @@
 // lib/features/camera/camera_page.dart
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_doc_scanner/flutter_doc_scanner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:printing/printing.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import '../../core/utils.dart';
 import '../../core/router.dart';
 import '../../database/app_database.dart';
@@ -25,8 +21,9 @@ class _CameraPageState extends ConsumerState<CameraPage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => _requestPermissionsAndScan());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _requestPermissionsAndScan(),
+    );
   }
 
   void _safePop() {
@@ -39,9 +36,11 @@ class _CameraPageState extends ConsumerState<CameraPage> {
     final hasCamera = await permissionService.requestCamera();
     if (!hasCamera) {
       if (!mounted) return;
-      showSnackBar(context,
-          'Camera permission is required to scan documents',
-          isError: true);
+      showSnackBar(
+        context,
+        'Camera permission is required to scan documents',
+        isError: true,
+      );
       _safePop();
       return;
     }
@@ -51,8 +50,8 @@ class _CameraPageState extends ConsumerState<CameraPage> {
 
   Future<void> _scan() async {
     try {
-      final PdfScanResult? result =
-          await FlutterDocScanner().getScannedDocumentAsPdf(page: 10);
+      final ImageScanResult? result = await FlutterDocScanner()
+          .getScannedDocumentAsImages(page: 10);
 
       if (!mounted) return;
       if (result == null) {
@@ -60,33 +59,32 @@ class _CameraPageState extends ConsumerState<CameraPage> {
         return;
       }
 
-      final pdfPath = result.pdfUri;
+      final imagePaths = result.images;
       final svc = ref.read(documentServiceProvider);
 
       if (widget.existingDocId != null) {
-        await _appendToExistingDocument(svc, pdfPath, result.pageCount);
+        await _appendToExistingDocument(svc, imagePaths);
         return;
       }
 
       final title = await _promptTitle();
       if (!mounted) return;
       final finalTitle = (title == null || title.isEmpty)
-          ? 'Document ${formatDate(DateTime.now())}'
+          ? 'Scan ${formatDate(DateTime.now())}'
           : title;
 
-      final docId = await svc.createDocumentFromPdf(
+      final docId = await svc.createDocument(
         title: finalTitle,
-        pdfPath: pdfPath,
-        pageCount: result.pageCount,
+        imagePaths: imagePaths,
       );
 
       if (mounted) {
-        context.go(AppRoutes.viewerPath(docId));
+        // Replace camera route so back from folder returns to previous page.
+        context.pushReplacement(AppRoutes.folderPath(docId));
       }
     } on DocScanException catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Scan failed: ${e.message}',
-            isError: true);
+        showSnackBar(context, 'Scan failed: ${e.message}', isError: true);
         _safePop();
       }
     } catch (e) {
@@ -99,10 +97,8 @@ class _CameraPageState extends ConsumerState<CameraPage> {
 
   Future<void> _appendToExistingDocument(
     DocumentService svc,
-    String pdfPath,
-    int pageCount,
+    List<String> imagePaths,
   ) async {
-    final cleanPath = cleanFilePath(pdfPath);
     final doc = await ref
         .read(documentsDaoProvider)
         .getDocument(widget.existingDocId!);
@@ -115,36 +111,19 @@ class _CameraPageState extends ConsumerState<CameraPage> {
     }
 
     try {
-      final pdfBytes = await File(cleanPath).readAsBytes();
-      final tempDir = await getTemporaryDirectory();
-      final imagePaths = <String>[];
-
-      final prefix = DateTime.now().millisecondsSinceEpoch;
-      final rasters = Printing.raster(pdfBytes, dpi: 150);
-      int pageIndex = 0;
-      await for (final page in rasters) {
-        final png = await page.toPng();
-        final outPath = p.join(
-            tempDir.path, 'scan_append_${prefix}_${pageIndex++}.png');
-        await File(outPath).writeAsBytes(png);
-        imagePaths.add(outPath);
-      }
-
-      if (imagePaths.isEmpty) {
-        await svc.addImages(widget.existingDocId!, [cleanPath]);
-      } else {
-        await svc.addImages(widget.existingDocId!, imagePaths);
-      }
+      await svc.addImages(widget.existingDocId!, imagePaths);
+      final pageCount = imagePaths.length;
 
       if (mounted) {
-        showSnackBar(context,
-            'Added $pageCount page${pageCount == 1 ? '' : 's'} to document');
+        showSnackBar(
+          context,
+          'Added $pageCount page${pageCount == 1 ? '' : 's'} to document',
+        );
         _safePop();
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Failed to add pages: $e',
-            isError: true);
+        showSnackBar(context, 'Failed to add pages: $e', isError: true);
         _safePop();
       }
     }
@@ -162,7 +141,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       docs = [];
     }
 
-    final baseTitle = 'Document ${formatDate(DateTime.now())}';
+    final baseTitle = 'Scan ${formatDate(DateTime.now())}';
     String title = baseTitle;
     int counter = 1;
     while (docs.any((d) => d.title == title)) {
@@ -193,8 +172,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
             child: const Text('Use Default'),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.pop(ctx, ctrl.text.trim()),
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
             child: const Text('Save'),
           ),
         ],
@@ -216,8 +194,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
         ),
       ),
       body: const Center(
-        child:
-            CircularProgressIndicator(color: Color(0xFF5C4BF5)),
+        child: CircularProgressIndicator(color: Color(0xFF5C4BF5)),
       ),
     );
   }

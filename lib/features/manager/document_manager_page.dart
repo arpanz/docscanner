@@ -54,22 +54,20 @@ class DocumentManagerPage extends ConsumerWidget {
                 tooltip: showFavs
                     ? 'Show all documents'
                     : 'Show favourites only',
-                onPressed: () => ref
-                    .read(showFavouritesOnlyProvider.notifier)
-                    .state = !showFavs,
+                onPressed: () =>
+                    ref.read(showFavouritesOnlyProvider.notifier).state =
+                        !showFavs,
               ),
               IconButton(
                 icon: const Icon(Icons.tune_rounded),
-                onPressed: () =>
-                    context.push(AppRoutes.settings),
+                onPressed: () => context.push(AppRoutes.settings),
               ),
               IconButton(
-                icon: Icon(isGrid
-                    ? Icons.view_list_rounded
-                    : Icons.grid_view_rounded),
-                onPressed: () => ref
-                    .read(isGridViewProvider.notifier)
-                    .state = !isGrid,
+                icon: Icon(
+                  isGrid ? Icons.view_list_rounded : Icons.grid_view_rounded,
+                ),
+                onPressed: () =>
+                    ref.read(isGridViewProvider.notifier).state = !isGrid,
               ),
               const SizedBox(width: 8),
             ],
@@ -78,13 +76,11 @@ class DocumentManagerPage extends ConsumerWidget {
               child: Column(
                 children: [
                   Padding(
-                    padding:
-                        const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
                     child: DocSearchBar(
                       initialValue: query,
-                      onChanged: (v) => ref
-                          .read(searchQueryProvider.notifier)
-                          .state = v,
+                      onChanged: (v) =>
+                          ref.read(searchQueryProvider.notifier).state = v,
                     ),
                   ),
                   const SortBar(),
@@ -93,11 +89,9 @@ class DocumentManagerPage extends ConsumerWidget {
             ),
           ),
           docsAsync.when(
-            loading: () => const SliverFillRemaining(
-                child: AppLoading()),
-            error: (e, _) => SliverFillRemaining(
-              child: Center(child: Text('Error: $e')),
-            ),
+            loading: () => const SliverFillRemaining(child: AppLoading()),
+            error: (e, _) =>
+                SliverFillRemaining(child: Center(child: Text('Error: $e'))),
             data: (docs) {
               if (docs.isEmpty) {
                 return SliverFillRemaining(
@@ -106,82 +100,65 @@ class DocumentManagerPage extends ConsumerWidget {
                     title: showFavs
                         ? 'No favourites yet'
                         : query.isEmpty
-                            ? 'No documents yet'
-                            : 'No results for "$query"',
+                        ? 'No documents yet'
+                        : 'No results for "$query"',
                     subtitle: showFavs
                         ? 'Tap the heart icon on a document to favourite it.'
                         : query.isEmpty
-                            ? 'Tap the button below to scan your first document.'
-                            : null,
+                        ? 'Tap the button below to scan your first document.'
+                        : null,
                   ),
                 );
               }
               return SliverPadding(
-                padding: const EdgeInsets.fromLTRB(
-                    16, 8, 16, 120),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
                 sliver: isGrid
                     ? SliverGrid.builder(
                         gridDelegate:
                             const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          crossAxisSpacing: 14,
-                          mainAxisSpacing: 14,
-                          childAspectRatio: 0.68,
-                        ),
+                              crossAxisCount: 2,
+                              crossAxisSpacing: 14,
+                              mainAxisSpacing: 14,
+                              childAspectRatio: 0.68,
+                            ),
                         itemCount: docs.length,
                         itemBuilder: (ctx, i) => DocCard(
                           document: docs[i],
-                          heroTag:
-                              'manager_doc_${docs[i].id}',
-                          onTap: () => context.push(
-                              docs[i].pdfPath != null &&
-                                      docs[i].imageCount <= 1 &&
-                                      docs[i].coverImagePath != null
-                                  ? AppRoutes.viewerPath(docs[i].id)
-                                  : AppRoutes.folderPath(docs[i].id)),
-                          onLongPress: () => _showDocOptions(
-                              context, ref, docs[i]),
+                          heroTag: 'manager_doc_${docs[i].id}',
+                          onTap: () =>
+                              context.push(AppRoutes.folderPath(docs[i].id)),
+                          onLongPress: () =>
+                              _showDocOptions(context, ref, docs[i]),
                         ),
                       )
                     : SliverList.builder(
                         itemCount: docs.length,
                         itemBuilder: (ctx, i) {
-                          final count = docs[i].imageCount;
                           return ListTile(
                             leading: SizedBox(
                               width: 56,
                               height: 64,
                               child: ClipRRect(
-                                borderRadius:
-                                    BorderRadius.circular(8),
-                                child: docs[i].coverImagePath !=
-                                        null
+                                borderRadius: BorderRadius.circular(8),
+                                child: docs[i].coverImagePath != null
                                     ? Image.file(
-                                        File(docs[i]
-                                            .coverImagePath!),
+                                        File(docs[i].coverImagePath!),
                                         fit: BoxFit.cover,
-                                        errorBuilder:
-                                            (_, __, ___) =>
-                                                Container(
-                                          color: theme
-                                              .colorScheme.primary
+                                        errorBuilder: (_, __, ___) => Container(
+                                          color: theme.colorScheme.primary
                                               .withOpacity(0.1),
                                           child: Icon(
-                                            Icons
-                                                .description_outlined,
-                                            color: theme.colorScheme
-                                                .primary,
+                                            Icons.description_outlined,
+                                            color: theme.colorScheme.primary,
                                           ),
                                         ),
                                       )
                                     : Container(
-                                        color: theme.colorScheme
-                                            .primary
+                                        color: theme.colorScheme.primary
                                             .withOpacity(0.1),
                                         child: Icon(
                                           Icons.description_outlined,
-                                          color:
-                                              theme.colorScheme.primary,
+                                          color: theme.colorScheme.primary,
                                         ),
                                       ),
                               ),
@@ -189,22 +166,17 @@ class DocumentManagerPage extends ConsumerWidget {
                             title: Text(
                               docs[i].title,
                               style: const TextStyle(
-                                  fontWeight: FontWeight.w600),
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                             // Fix: list view now shows size like grid card
                             // footer does, keeping both views consistent.
-                            subtitle: _ListTileSubtitle(
-                                document: docs[i]),
-                            trailing:
-                                const Icon(Icons.chevron_right),
-                            onTap: () => context.push(
-                                docs[i].pdfPath != null &&
-                                        docs[i].imageCount <= 1 &&
-                                        docs[i].coverImagePath != null
-                                    ? AppRoutes.viewerPath(docs[i].id)
-                                    : AppRoutes.folderPath(docs[i].id)),
-                            onLongPress: () => _showDocOptions(
-                                context, ref, docs[i]),
+                            subtitle: _ListTileSubtitle(document: docs[i]),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () =>
+                                context.push(AppRoutes.folderPath(docs[i].id)),
+                            onLongPress: () =>
+                                _showDocOptions(context, ref, docs[i]),
                           );
                         },
                       ),
@@ -222,30 +194,22 @@ class DocumentManagerPage extends ConsumerWidget {
             FloatingActionButton(
               heroTag: 'gallery_fab',
               mini: true,
-              backgroundColor: theme.colorScheme
-                  .surfaceContainerHigh,
+              backgroundColor: theme.colorScheme.surfaceContainerHigh,
               foregroundColor: theme.colorScheme.primary,
               elevation: 2,
-              onPressed: () =>
-                  _pickFromGallery(context, ref),
-              child: const Icon(
-                  Icons.photo_library_outlined),
+              onPressed: () => _pickFromGallery(context, ref),
+              child: const Icon(Icons.photo_library_outlined),
             ),
             const SizedBox(width: 12),
-            _GradientFAB(
-              onPressed: () =>
-                  context.push(AppRoutes.camera),
-            ),
+            _GradientFAB(onPressed: () => context.push(AppRoutes.camera)),
           ],
         ),
       ),
-      floatingActionButtonLocation:
-          FloatingActionButtonLocation.centerFloat,
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
-  Future<void> _pickFromGallery(
-      BuildContext context, WidgetRef ref) async {
+  Future<void> _pickFromGallery(BuildContext context, WidgetRef ref) async {
     final picker = ImagePicker();
     List<XFile> images;
     try {
@@ -260,11 +224,7 @@ class DocumentManagerPage extends ConsumerWidget {
       return;
     } catch (e) {
       if (context.mounted) {
-        showSnackBar(
-          context,
-          'Failed to open gallery: $e',
-          isError: true,
-        );
+        showSnackBar(context, 'Failed to open gallery: $e', isError: true);
       }
       return;
     }
@@ -272,48 +232,42 @@ class DocumentManagerPage extends ConsumerWidget {
 
     final paths = images.map((x) => x.path).toList();
     final ctrl = TextEditingController(
-      text: 'Document ${formatDate(DateTime.now())}',
+      text: 'Scan ${formatDate(DateTime.now())}',
     );
     final title = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Name your document'),
-        content:
-            TextField(controller: ctrl, autofocus: true),
+        content: TextField(controller: ctrl, autofocus: true),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: () =>
-                  Navigator.pop(ctx, ctrl.text.trim()),
-              child: const Text('Save')),
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text('Save'),
+          ),
         ],
       ),
     );
-    if (title == null ||
-        title.isEmpty ||
-        !context.mounted) return;
+    if (title == null || title.isEmpty || !context.mounted) return;
 
     try {
-      final docId =
-          await ref.read(documentServiceProvider).createDocument(
-                title: title,
-                imagePaths: paths,
-              );
+      final docId = await ref
+          .read(documentServiceProvider)
+          .createDocument(title: title, imagePaths: paths);
       if (context.mounted) {
         context.push(AppRoutes.folderPath(docId));
       }
     } catch (e) {
       if (context.mounted) {
-        showSnackBar(context, 'Failed to import images: $e',
-            isError: true);
+        showSnackBar(context, 'Failed to import images: $e', isError: true);
       }
     }
   }
 
-  void _showDocOptions(
-      BuildContext context, WidgetRef ref, Document doc) {
+  void _showDocOptions(BuildContext context, WidgetRef ref, Document doc) {
     final messenger = ScaffoldMessenger.of(context);
     showModalBottomSheet(
       context: context,
@@ -322,29 +276,25 @@ class DocumentManagerPage extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(
-                  Icons.drive_file_rename_outline),
+              leading: const Icon(Icons.drive_file_rename_outline),
               title: const Text('Rename'),
               onTap: () async {
                 Navigator.pop(sheetCtx);
-                final ctrl = TextEditingController(
-                    text: doc.title);
+                final ctrl = TextEditingController(text: doc.title);
                 final name = await showDialog<String>(
                   context: context,
                   builder: (d) => AlertDialog(
                     title: const Text('Rename document'),
-                    content: TextField(
-                        controller: ctrl,
-                        autofocus: true),
+                    content: TextField(controller: ctrl, autofocus: true),
                     actions: [
                       TextButton(
-                          onPressed: () =>
-                              Navigator.pop(d),
-                          child: const Text('Cancel')),
+                        onPressed: () => Navigator.pop(d),
+                        child: const Text('Cancel'),
+                      ),
                       FilledButton(
-                          onPressed: () => Navigator.pop(
-                              d, ctrl.text.trim()),
-                          child: const Text('Rename')),
+                        onPressed: () => Navigator.pop(d, ctrl.text.trim()),
+                        child: const Text('Rename'),
+                      ),
                     ],
                   ),
                 );
@@ -354,25 +304,26 @@ class DocumentManagerPage extends ConsumerWidget {
                         .read(documentServiceProvider)
                         .renameDocument(doc.id, name);
                   } catch (e) {
-                    messenger.showSnackBar(SnackBar(
-                      content:
-                          Text('Failed to rename: $e'),
-                      backgroundColor: Colors.red,
-                    ));
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to rename: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
                   }
                 }
               },
             ),
             const Divider(),
             ListTile(
-              leading: Icon(Icons.delete_outline,
-                  color:
-                      Theme.of(context).colorScheme.error),
-              title: Text('Delete',
-                  style: TextStyle(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .error)),
+              leading: Icon(
+                Icons.delete_outline,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              title: Text(
+                'Delete',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
               onTap: () async {
                 Navigator.pop(sheetCtx);
                 final ok = await showDialog<bool>(
@@ -380,18 +331,20 @@ class DocumentManagerPage extends ConsumerWidget {
                   builder: (ctx) => AlertDialog(
                     title: const Text('Delete document?'),
                     content: Text(
-                        'Delete "${doc.title}"? This cannot be undone.'),
+                      'Delete "${doc.title}"? This cannot be undone.',
+                    ),
                     actions: [
                       TextButton(
-                          onPressed: () =>
-                              Navigator.pop(ctx, false),
-                          child: const Text('Cancel')),
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('Cancel'),
+                      ),
                       FilledButton(
-                          onPressed: () =>
-                              Navigator.pop(ctx, true),
-                          style: FilledButton.styleFrom(
-                              backgroundColor: Colors.red),
-                          child: const Text('Delete')),
+                        onPressed: () => Navigator.pop(ctx, true),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.red,
+                        ),
+                        child: const Text('Delete'),
+                      ),
                     ],
                   ),
                 );
@@ -401,11 +354,12 @@ class DocumentManagerPage extends ConsumerWidget {
                         .read(documentServiceProvider)
                         .deleteDocument(doc.id);
                   } catch (e) {
-                    messenger.showSnackBar(SnackBar(
-                      content:
-                          Text('Failed to delete: $e'),
-                      backgroundColor: Colors.red,
-                    ));
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to delete: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
                   }
                 }
               },
@@ -425,30 +379,24 @@ class _ListTileSubtitle extends StatefulWidget {
   final Document document;
 
   @override
-  State<_ListTileSubtitle> createState() =>
-      _ListTileSubtitleState();
+  State<_ListTileSubtitle> createState() => _ListTileSubtitleState();
 }
 
-class _ListTileSubtitleState
-    extends State<_ListTileSubtitle> {
+class _ListTileSubtitleState extends State<_ListTileSubtitle> {
   late Future<int> _sizeFuture;
 
   @override
   void initState() {
     super.initState();
-    _sizeFuture =
-        _computeSize(widget.document.folderPath);
+    _sizeFuture = _computeSize(widget.document.folderPath);
   }
 
   @override
   void didUpdateWidget(_ListTileSubtitle old) {
     super.didUpdateWidget(old);
-    if (old.document.folderPath !=
-            widget.document.folderPath ||
-        old.document.updatedAt !=
-            widget.document.updatedAt) {
-      _sizeFuture =
-          _computeSize(widget.document.folderPath);
+    if (old.document.folderPath != widget.document.folderPath ||
+        old.document.updatedAt != widget.document.updatedAt) {
+      _sizeFuture = _computeSize(widget.document.folderPath);
     }
   }
 
@@ -473,8 +421,7 @@ class _ListTileSubtitleState
   @override
   Widget build(BuildContext context) {
     final count = widget.document.imageCount;
-    final pageLabel =
-        '$count ${count == 1 ? 'page' : 'pages'}';
+    final pageLabel = '$count ${count == 1 ? 'page' : 'pages'}';
     return FutureBuilder<int>(
       future: _sizeFuture,
       builder: (context, snapshot) {
@@ -499,8 +446,7 @@ class _GradientFAB extends StatelessWidget {
         gradient: LinearGradient(
           colors: [
             cs.primary,
-            Color.lerp(
-                cs.primary, Colors.purpleAccent, 0.5)!,
+            Color.lerp(cs.primary, Colors.purpleAccent, 0.5)!,
           ],
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
@@ -520,13 +466,15 @@ class _GradientFAB extends StatelessWidget {
           borderRadius: BorderRadius.circular(32),
           onTap: onPressed,
           child: const Padding(
-            padding: EdgeInsets.symmetric(
-                horizontal: 28, vertical: 16),
+            padding: EdgeInsets.symmetric(horizontal: 28, vertical: 16),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.document_scanner_outlined,
-                    color: Colors.white, size: 22),
+                Icon(
+                  Icons.document_scanner_outlined,
+                  color: Colors.white,
+                  size: 22,
+                ),
                 SizedBox(width: 10),
                 Text(
                   'Scan Document',
