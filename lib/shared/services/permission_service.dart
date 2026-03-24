@@ -4,55 +4,54 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class PermissionService {
-  /// Request camera permission
+  /// Request camera permission.
   Future<bool> requestCamera() async {
     if (Platform.isAndroid) {
       final status = await Permission.camera.request();
       return status.isGranted;
     }
-    // iOS handles permissions via Info.plist
-    return true;
+    return true; // iOS handles via Info.plist
   }
 
-  /// Request storage permission (Android only)
+  /// Request storage permission.
+  /// On Android 13+ (API 33+), READ_EXTERNAL_STORAGE was removed.
+  /// We check whether the storage permission is still requestable
+  /// (isDenied = can still prompt) to determine the API level.
+  /// On API 33+, Permission.storage returns permanentlyDenied without
+  /// prompting, so isDenied is false and we skip the request entirely.
   Future<bool> requestStorage() async {
-    if (Platform.isAndroid) {
-      // For Android 13+, use photos permission
-      if (await Permission.photos.request().isGranted) {
-        return true;
-      }
-      
-      // For older Android, request storage
-      final status = await Permission.storage.request();
-      return status.isGranted;
+    if (!Platform.isAndroid) return true;
+
+    final storageStatus = await Permission.storage.status;
+    if (storageStatus.isDenied) {
+      // API <= 32: request legacy storage permission
+      final result = await Permission.storage.request();
+      return result.isGranted;
     }
-    // iOS handles permissions via Info.plist
-    return true;
+    if (storageStatus.isGranted) return true;
+
+    // API 33+: storage is permanently denied without ever prompting.
+    // Use photos permission instead for gallery access.
+    final photosStatus = await Permission.photos.status;
+    if (photosStatus.isDenied) {
+      final result = await Permission.photos.request();
+      return result.isGranted;
+    }
+    return photosStatus.isGranted;
   }
 
-  /// Check if camera permission is granted
-  Future<bool> hasCamera() async {
-    return await Permission.camera.isGranted;
-  }
+  Future<bool> hasCamera() async => Permission.camera.isGranted;
 
-  /// Check if storage permission is granted
   Future<bool> hasStorage() async {
     if (Platform.isAndroid) {
-      return await Permission.photos.isGranted || 
-             await Permission.storage.isGranted;
+      return await Permission.photos.isGranted ||
+          await Permission.storage.isGranted;
     }
     return true;
   }
 
-  /// Open app settings if permission denied
-  Future<void> openSettings() async {
-    await openAppSettings();
-  }
+  Future<void> openSettings() async => openAppSettings();
 }
 
-// ---------------------------------------------------------------------------
-// Riverpod provider
-// ---------------------------------------------------------------------------
-final permissionServiceProvider = Provider<PermissionService>((ref) {
-  return PermissionService();
-});
+final permissionServiceProvider =
+    Provider<PermissionService>((ref) => PermissionService());

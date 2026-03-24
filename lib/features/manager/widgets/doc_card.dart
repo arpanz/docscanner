@@ -27,11 +27,15 @@ class DocCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
+    // Always use an explicit, unique hero tag to avoid collision
+    // when the same document appears in multiple lists simultaneously.
+    final tag = heroTag ?? 'doc_card_${document.id}';
+
     return GestureDetector(
       onTap: onTap,
       onLongPress: onLongPress,
       child: Hero(
-        tag: heroTag ?? 'doc_${document.id}',
+        tag: tag,
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
@@ -60,30 +64,30 @@ class DocCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Cover image — takes remaining space
                   Expanded(
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        // Image or initials placeholder
                         document.coverImagePath != null
-                            ? (document.coverImagePath!.toLowerCase().endsWith(
-                                    '.pdf',
-                                  )
-                                  ? _PdfThumbnail(path: document.coverImagePath!)
-                                  : Image.file(
-                                      File(document.coverImagePath!),
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (ctx, err, _) => Container(
-                                        color: cs.surfaceContainerHigh,
-                                        child: Center(
-                                          child: Icon(
-                                            Icons.broken_image_outlined,
-                                            color: cs.onSurfaceVariant,
-                                          ),
+                            ? (document.coverImagePath!
+                                    .toLowerCase()
+                                    .endsWith('.pdf')
+                                ? _PdfThumbnail(
+                                    path: document.coverImagePath!)
+                                : Image.file(
+                                    File(document.coverImagePath!),
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (ctx, err, _) =>
+                                        Container(
+                                      color: cs.surfaceContainerHigh,
+                                      child: Center(
+                                        child: Icon(
+                                          Icons.broken_image_outlined,
+                                          color: cs.onSurfaceVariant,
                                         ),
                                       ),
-                                    ))
+                                    ),
+                                  ))
                             : Container(
                                 decoration: BoxDecoration(
                                   gradient: LinearGradient(
@@ -101,13 +105,12 @@ class DocCard extends StatelessWidget {
                                     style: TextStyle(
                                       fontSize: 40,
                                       fontWeight: FontWeight.w800,
-                                      color: cs.primary.withOpacity(0.35),
+                                      color:
+                                          cs.primary.withOpacity(0.35),
                                     ),
                                   ),
                                 ),
                               ),
-
-                        // Bottom gradient overlay
                         Positioned(
                           left: 0,
                           right: 0,
@@ -126,21 +129,20 @@ class DocCard extends StatelessWidget {
                             ),
                           ),
                         ),
-
-                        // Page count badge
                         Positioned(
                           top: 10,
                           right: 10,
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              // Favourite indicator
                               if (document.isFavourite)
                                 Container(
-                                  margin: const EdgeInsets.only(right: 6),
+                                  margin:
+                                      const EdgeInsets.only(right: 6),
                                   padding: const EdgeInsets.all(4),
                                   decoration: BoxDecoration(
-                                    color: Colors.red.withOpacity(0.8),
+                                    color:
+                                        Colors.red.withOpacity(0.8),
                                     shape: BoxShape.circle,
                                   ),
                                   child: const Icon(
@@ -155,8 +157,10 @@ class DocCard extends StatelessWidget {
                                   vertical: 3,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.55),
-                                  borderRadius: BorderRadius.circular(20),
+                                  color:
+                                      Colors.black.withOpacity(0.55),
+                                  borderRadius:
+                                      BorderRadius.circular(20),
                                 ),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
@@ -184,10 +188,10 @@ class DocCard extends StatelessWidget {
                       ],
                     ),
                   ),
-
-                  // Footer — sizes precisely to content
+                  // Footer — shows total folder size (not just cover image)
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                    padding:
+                        const EdgeInsets.fromLTRB(14, 12, 14, 14),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
@@ -203,23 +207,7 @@ class DocCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 6),
-                        // Document metadata: pages and size
-                        FutureBuilder<int>(
-                          future: _getDocumentSize(document),
-                          builder: (context, snapshot) {
-                            final sizeStr = snapshot.hasData
-                                ? formatBytes(snapshot.data!)
-                                : '...';
-                            return Text(
-                              '${document.imageCount} pages · $sizeStr',
-                              style: tt.labelSmall?.copyWith(
-                                color: cs.onSurface.withOpacity(0.6),
-                                fontWeight: FontWeight.w500,
-                                letterSpacing: 0.1,
-                              ),
-                            );
-                          },
-                        ),
+                        _DocCardFooter(document: document),
                       ],
                     ),
                   ),
@@ -231,37 +219,127 @@ class DocCard extends StatelessWidget {
       ),
     );
   }
+}
 
-  Future<int> _getDocumentSize(Document doc) async {
-    if (doc.coverImagePath == null) return 0;
-    return await fileSize(doc.coverImagePath!);
+// ---------------------------------------------------------------------------
+// Footer: computes total folder size once via StatefulWidget (not FutureBuilder)
+// so rebuilds don't retrigger the async work.
+// ---------------------------------------------------------------------------
+class _DocCardFooter extends StatefulWidget {
+  const _DocCardFooter({required this.document});
+  final Document document;
+
+  @override
+  State<_DocCardFooter> createState() => _DocCardFooterState();
+}
+
+class _DocCardFooterState extends State<_DocCardFooter> {
+  late Future<int> _sizeFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _sizeFuture = _computeFolderSize(widget.document.folderPath);
+  }
+
+  @override
+  void didUpdateWidget(_DocCardFooter old) {
+    super.didUpdateWidget(old);
+    if (old.document.folderPath != widget.document.folderPath ||
+        old.document.updatedAt != widget.document.updatedAt) {
+      _sizeFuture = _computeFolderSize(widget.document.folderPath);
+    }
+  }
+
+  /// Sums all file sizes inside the document folder.
+  Future<int> _computeFolderSize(String folderPath) async {
+    try {
+      final folder = Directory(folderPath);
+      if (!await folder.exists()) return 0;
+      int total = 0;
+      await for (final entity in folder.list()) {
+        if (entity is File) {
+          try {
+            total += await entity.length();
+          } catch (_) {}
+        }
+      }
+      return total;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return FutureBuilder<int>(
+      future: _sizeFuture,
+      builder: (context, snapshot) {
+        final sizeStr =
+            snapshot.hasData ? formatBytes(snapshot.data!) : '…';
+        // Use 'images' consistently with the sort chip label
+        return Text(
+          '${widget.document.imageCount} images · $sizeStr',
+          style: tt.labelSmall?.copyWith(
+            color: cs.onSurface.withOpacity(0.6),
+            fontWeight: FontWeight.w500,
+            letterSpacing: 0.1,
+          ),
+        );
+      },
+    );
   }
 }
 
-class _PdfThumbnail extends StatelessWidget {
+// ---------------------------------------------------------------------------
+// PDF Thumbnail — StatefulWidget stores the Future in initState so
+// it is NOT re-created on every rebuild / scroll.
+// ---------------------------------------------------------------------------
+class _PdfThumbnail extends StatefulWidget {
   const _PdfThumbnail({required this.path});
   final String path;
 
   @override
+  State<_PdfThumbnail> createState() => _PdfThumbnailState();
+}
+
+class _PdfThumbnailState extends State<_PdfThumbnail> {
+  late Future<Uint8List?> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _renderPdf();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return FutureBuilder<Uint8List?>(
-      future: _renderPdf(),
+      future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator.adaptive());
+          return const Center(
+              child: CircularProgressIndicator.adaptive());
         }
-        if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
+        if (snapshot.hasError ||
+            !snapshot.hasData ||
+            snapshot.data == null) {
           return Container(
             color: Theme.of(context).colorScheme.surfaceContainerHigh,
-            child: const Center(child: Icon(Icons.picture_as_pdf_outlined)),
+            child: const Center(
+                child: Icon(Icons.picture_as_pdf_outlined)),
           );
         }
         return Image.memory(
           snapshot.data!,
           fit: BoxFit.cover,
           errorBuilder: (ctx, err, _) => Container(
-            color: Theme.of(context).colorScheme.surfaceContainerHigh,
-            child: const Center(child: Icon(Icons.broken_image_outlined)),
+            color:
+                Theme.of(context).colorScheme.surfaceContainerHigh,
+            child:
+                const Center(child: Icon(Icons.broken_image_outlined)),
           ),
         );
       },
@@ -271,36 +349,31 @@ class _PdfThumbnail extends StatelessWidget {
   Future<Uint8List?> _renderPdf() async {
     try {
       final cacheDir = await getTemporaryDirectory();
-      final thumbDir = Directory(p.join(cacheDir.path, 'pdf_thumbnails'));
+      final thumbDir =
+          Directory(p.join(cacheDir.path, 'pdf_thumbnails'));
 
-      // Clean up old thumbnails (older than 7 days)
       await _cleanupOldThumbnails(thumbDir);
 
       final safeName =
-          '${path.hashCode}_${p.basenameWithoutExtension(path)}.png';
+          '${widget.path.hashCode}_${p.basenameWithoutExtension(widget.path)}.png';
       final cacheFile = File(p.join(thumbDir.path, safeName));
 
       if (await cacheFile.exists()) {
         return await cacheFile.readAsBytes();
       }
 
-      final bytes = await File(path).readAsBytes();
-      final rasters = await Printing.raster(
-        bytes,
-        pages: [0],
-        dpi: 72,
-      ).toList();
+      final bytes = await File(widget.path).readAsBytes();
+      final rasters =
+          await Printing.raster(bytes, pages: [0], dpi: 72).toList();
       if (rasters.isNotEmpty) {
         final pngBytes = await rasters.first.toPng();
-
         if (!await thumbDir.exists()) {
           await thumbDir.create(recursive: true);
         }
         await cacheFile.writeAsBytes(pngBytes);
-
         return pngBytes;
       }
-    } catch (e) {
+    } catch (_) {
       return null;
     }
     return null;
@@ -309,19 +382,15 @@ class _PdfThumbnail extends StatelessWidget {
   Future<void> _cleanupOldThumbnails(Directory thumbDir) async {
     try {
       if (!await thumbDir.exists()) return;
-
       final now = DateTime.now();
       await for (final entity in thumbDir.list()) {
         if (entity is File) {
           final stat = await entity.stat();
-          final age = now.difference(stat.modified);
-          if (age.inDays > 7) {
+          if (now.difference(stat.modified).inDays > 7) {
             await entity.delete();
           }
         }
       }
-    } catch (e) {
-      // Ignore cleanup errors
-    }
+    } catch (_) {}
   }
 }

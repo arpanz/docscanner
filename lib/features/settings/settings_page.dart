@@ -12,7 +12,7 @@ class SettingsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
-    
+
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
@@ -48,17 +48,26 @@ class SettingsPage extends ConsumerWidget {
           ),
           const Divider(),
           const _SectionHeader('About'),
+          // Version tile — tapping shows an about dialog (no misleading chevron)
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('Version'),
-            trailing: const Text('1.0.0', style: TextStyle(color: Colors.grey)),
+            trailing:
+                const Text('1.0.0', style: TextStyle(color: Colors.grey)),
+            onTap: () => showAboutDialog(
+              context: context,
+              applicationName: 'DocScanner',
+              applicationVersion: '1.0.0',
+              applicationLegalese: '\u00a9 2026 DocScanner',
+            ),
           ),
         ],
       ),
     );
   }
 
-  void _showThemeDialog(BuildContext context, WidgetRef ref, ThemeMode current) {
+  void _showThemeDialog(
+      BuildContext context, WidgetRef ref, ThemeMode current) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -73,7 +82,7 @@ class SettingsPage extends ConsumerWidget {
               groupValue: current,
               onChanged: (value) {
                 if (value != null) {
-                  ref.read(themeModeProvider.notifier).state = value;
+                  ref.read(themeModeProvider.notifier).setMode(value);
                   Navigator.pop(ctx);
                 }
               },
@@ -84,7 +93,7 @@ class SettingsPage extends ConsumerWidget {
               groupValue: current,
               onChanged: (value) {
                 if (value != null) {
-                  ref.read(themeModeProvider.notifier).state = value;
+                  ref.read(themeModeProvider.notifier).setMode(value);
                   Navigator.pop(ctx);
                 }
               },
@@ -95,7 +104,7 @@ class SettingsPage extends ConsumerWidget {
               groupValue: current,
               onChanged: (value) {
                 if (value != null) {
-                  ref.read(themeModeProvider.notifier).state = value;
+                  ref.read(themeModeProvider.notifier).setMode(value);
                   Navigator.pop(ctx);
                 }
               },
@@ -116,7 +125,6 @@ class SettingsPage extends ConsumerWidget {
     try {
       final tempDir = await getTemporaryDirectory();
       final cacheDir = Directory(tempDir.path);
-      
       if (await cacheDir.exists()) {
         int count = 0;
         await for (final entity in cacheDir.list()) {
@@ -128,7 +136,6 @@ class SettingsPage extends ConsumerWidget {
             count++;
           }
         }
-        
         if (context.mounted) {
           showSnackBar(context, 'Cleared $count cached items');
         }

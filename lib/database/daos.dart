@@ -11,18 +11,20 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
     with _$DocumentsDaoMixin {
   DocumentsDao(super.db);
 
-  Stream<List<Document>> watchAllDocuments() => (select(
-        documents,
-      )..orderBy([(d) => OrderingTerm.desc(d.updatedAt)])).watch();
+  /// Returns an unsorted stream — sorting is handled entirely by
+  /// filteredDocumentsProvider on the client side to avoid
+  /// double-ordering and flash-of-wrong-order issues.
+  Stream<List<Document>> watchAllDocuments() =>
+      select(documents).watch();
 
   Stream<List<Document>> watchFavourites() =>
       (select(documents)
-            ..where((d) => d.isFavourite.equals(true))
-            ..orderBy([(d) => OrderingTerm.desc(d.updatedAt)]))
+            ..where((d) => d.isFavourite.equals(true)))
           .watch();
 
   Future<Document?> getDocument(int id) =>
-      (select(documents)..where((d) => d.id.equals(id))).getSingleOrNull();
+      (select(documents)..where((d) => d.id.equals(id)))
+          .getSingleOrNull();
 
   Future<int> insertDocument(DocumentsCompanion entry) =>
       into(documents).insert(entry);
@@ -39,13 +41,16 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
     );
   }
 
-  /// Refreshes imageCount, coverImagePath, and updatedAt from the folder.
-  /// Uses async list() to avoid blocking the main thread.
-  /// For PDF-only documents, sets imageCount = 1 so sorting works.
-  Future<void> refreshDocumentMeta(int docId, String folderPath) async {
+  /// Refreshes imageCount, coverImagePath, updatedAt from the folder.
+  /// Async listing — never blocks the main thread.
+  /// PDF-only documents get imageCount = 1 so sort-by-images works.
+  Future<void> refreshDocumentMeta(
+      int docId, String folderPath) async {
     final folder = Directory(folderPath);
     if (!await folder.exists()) {
-      await (update(documents)..where((d) => d.id.equals(docId))).write(
+      await (update(documents)
+            ..where((d) => d.id.equals(docId)))
+          .write(
         DocumentsCompanion(
           imageCount: const Value(0),
           coverImagePath: const Value(null),
@@ -55,7 +60,6 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
       return;
     }
 
-    // Use async listing — never block the main thread
     final allFiles = await folder
         .list()
         .where((e) => e is File)
@@ -71,10 +75,13 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
       ..sort((a, b) => a.path.compareTo(b.path));
 
     if (images.isEmpty) {
-      final pdf = allFiles.where(
+      final pdfs = allFiles.where(
           (f) => f.path.toLowerCase().endsWith('.pdf'));
-      final hasPdf = pdf.isNotEmpty && await pdf.first.exists();
-      await (update(documents)..where((d) => d.id.equals(docId))).write(
+      final hasPdf =
+          pdfs.isNotEmpty && await pdfs.first.exists();
+      await (update(documents)
+            ..where((d) => d.id.equals(docId)))
+          .write(
         DocumentsCompanion(
           imageCount: Value(hasPdf ? 1 : 0),
           coverImagePath: const Value(null),
@@ -84,7 +91,9 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
       return;
     }
 
-    await (update(documents)..where((d) => d.id.equals(docId))).write(
+    await (update(documents)
+          ..where((d) => d.id.equals(docId)))
+        .write(
       DocumentsCompanion(
         imageCount: Value(images.length),
         coverImagePath: Value(images.first.path),

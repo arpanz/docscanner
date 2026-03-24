@@ -51,8 +51,7 @@ class DocumentManagerPage extends ConsumerWidget {
                     ? Icons.view_list_rounded
                     : Icons.grid_view_rounded),
                 onPressed: () =>
-                    ref.read(isGridViewProvider.notifier).state =
-                        !isGrid,
+                    ref.read(isGridViewProvider.notifier).state = !isGrid,
               ),
               const SizedBox(width: 8),
             ],
@@ -64,9 +63,8 @@ class DocumentManagerPage extends ConsumerWidget {
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
                     child: DocSearchBar(
                       initialValue: query,
-                      onChanged: (v) => ref
-                          .read(searchQueryProvider.notifier)
-                          .state = v,
+                      onChanged: (v) =>
+                          ref.read(searchQueryProvider.notifier).state = v,
                     ),
                   ),
                   const SortBar(),
@@ -95,7 +93,10 @@ class DocumentManagerPage extends ConsumerWidget {
                 );
               }
               return SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                // bottom: 120 gives extra clearance for the FAB row
+                // on small screens
+                padding:
+                    const EdgeInsets.fromLTRB(16, 8, 16, 120),
                 sliver: isGrid
                     ? SliverGrid.builder(
                         gridDelegate:
@@ -108,10 +109,12 @@ class DocumentManagerPage extends ConsumerWidget {
                         itemCount: docs.length,
                         itemBuilder: (ctx, i) => DocCard(
                           document: docs[i],
+                          // Include route + index in tag to prevent collision
+                          heroTag: 'manager_doc_${docs[i].id}',
                           onTap: () => context
                               .push(AppRoutes.folderPath(docs[i].id)),
-                          onLongPress: () => _showDocOptions(
-                              context, ref, docs[i]),
+                          onLongPress: () =>
+                              _showDocOptions(context, ref, docs[i]),
                         ),
                       )
                     : SliverList.builder(
@@ -124,17 +127,15 @@ class DocumentManagerPage extends ConsumerWidget {
                               borderRadius: BorderRadius.circular(8),
                               child: docs[i].coverImagePath != null
                                   ? Image.file(
-                                      File(docs[i]
-                                          .coverImagePath!),
+                                      File(docs[i].coverImagePath!),
                                       fit: BoxFit.cover,
                                       errorBuilder: (_, __, ___) =>
                                           Container(
-                                            color: theme
-                                                .colorScheme.primary
+                                            color: theme.colorScheme
+                                                .primary
                                                 .withOpacity(0.1),
                                             child: Icon(
-                                              Icons
-                                                  .description_outlined,
+                                              Icons.description_outlined,
                                               color: theme
                                                   .colorScheme.primary,
                                             ),
@@ -145,8 +146,7 @@ class DocumentManagerPage extends ConsumerWidget {
                                           .withOpacity(0.1),
                                       child: Icon(
                                         Icons.description_outlined,
-                                        color:
-                                            theme.colorScheme.primary,
+                                        color: theme.colorScheme.primary,
                                       ),
                                     ),
                             ),
@@ -156,14 +156,15 @@ class DocumentManagerPage extends ConsumerWidget {
                             style: const TextStyle(
                                 fontWeight: FontWeight.w600),
                           ),
+                          // 'images' consistent with sort chip label
                           subtitle: Text(
-                              '${docs[i].imageCount} pages · ${relativeDate(docs[i].updatedAt)}'),
-                          trailing:
-                              const Icon(Icons.chevron_right),
-                          onTap: () => context.push(
-                              AppRoutes.folderPath(docs[i].id)),
-                          onLongPress: () => _showDocOptions(
-                              context, ref, docs[i]),
+                            '${docs[i].imageCount} images · ${relativeDate(docs[i].updatedAt)}',
+                          ),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => context
+                              .push(AppRoutes.folderPath(docs[i].id)),
+                          onLongPress: () =>
+                              _showDocOptions(context, ref, docs[i]),
                         ),
                       ),
               );
@@ -178,7 +179,7 @@ class DocumentManagerPage extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             FloatingActionButton(
-              heroTag: 'gallery',
+              heroTag: 'gallery_fab',
               mini: true,
               backgroundColor:
                   Theme.of(context).colorScheme.surfaceContainerHigh,
@@ -227,7 +228,6 @@ class DocumentManagerPage extends ConsumerWidget {
     );
     if (title == null || title.isEmpty || !context.mounted) return;
 
-    // Wrap in try/catch — disk-full or compress failures show a snackbar
     try {
       final docId =
           await ref.read(documentServiceProvider).createDocument(
@@ -247,10 +247,7 @@ class DocumentManagerPage extends ConsumerWidget {
 
   void _showDocOptions(
       BuildContext context, WidgetRef ref, Document doc) {
-    // Capture scaffold messenger before entering the modal
-    // to avoid stale context issues inside callbacks.
     final messenger = ScaffoldMessenger.of(context);
-
     showModalBottomSheet(
       context: context,
       builder: (sheetCtx) => SafeArea(
@@ -265,20 +262,19 @@ class DocumentManagerPage extends ConsumerWidget {
                 Navigator.pop(sheetCtx);
                 final ctrl =
                     TextEditingController(text: doc.title);
-                // Use the outer context for dialogs — sheet is gone
                 final name = await showDialog<String>(
                   context: context,
                   builder: (d) => AlertDialog(
                     title: const Text('Rename document'),
-                    content:
-                        TextField(controller: ctrl, autofocus: true),
+                    content: TextField(
+                        controller: ctrl, autofocus: true),
                     actions: [
                       TextButton(
                           onPressed: () => Navigator.pop(d),
                           child: const Text('Cancel')),
                       FilledButton(
-                          onPressed: () =>
-                              Navigator.pop(d, ctrl.text.trim()),
+                          onPressed: () => Navigator.pop(
+                              d, ctrl.text.trim()),
                           child: const Text('Rename')),
                     ],
                   ),

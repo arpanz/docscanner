@@ -5,6 +5,9 @@ import 'package:flutter_doc_scanner/flutter_doc_scanner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:printing/printing.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import '../../core/utils.dart';
 import '../../core/router.dart';
 import '../../database/app_database.dart';
@@ -46,9 +49,9 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       return;
     }
 
-    // On Android, only request storage permission on API <= 32 (Android 12 and below).
-    // Android 13+ (API 33+) removed READ_EXTERNAL_STORAGE — requesting it causes
-    // an automatic denial that blocks the entire scan flow.
+    // Only request legacy storage on Android 12 and below.
+    // Android 13+ removed READ_EXTERNAL_STORAGE — requesting it
+    // causes an automatic denial that blocks the scan flow.
     if (Platform.isAndroid) {
       final needsStorage = await _needsStoragePermission();
       if (needsStorage) {
@@ -69,21 +72,10 @@ class _CameraPageState extends ConsumerState<CameraPage> {
     if (mounted) await _scan();
   }
 
-  /// Returns true only on Android API <= 32, where storage permission is needed.
-  /// Uses permission_handler status check as a proxy — on API 33+ the permission
-  /// status will be .denied/.permanentlyDenied immediately without prompting,
-  /// meaning we can detect old Android by checking if the permission is requestable.
+  /// Returns true only on Android API <=32 where storage permission is needed.
   Future<bool> _needsStoragePermission() async {
-    // manageExternalStorage is API 30+, storage is the legacy one.
-    // If Permission.storage is not restricted (i.e., not permanently denied before
-    // ever asking), we're likely on API <= 32.
-    // Safest approach: check if Permission.storage.status is not permanentlyDenied
-    // without prompting — on API 33+ it returns permanentlyDenied immediately.
     final status = await Permission.storage.status;
-    // On Android 13+: returns .denied or .permanentlyDenied without ever prompting.
-    // We only need to request it if it's in a requestable state (denied, not permanent).
-    // On Android 13+ .photos permission covers gallery, not needed for scan flow.
-    return status.isDenied; // .isDenied means it can still be requested
+    return status.isDenied;
   }
 
   Future<void> _scan() async {
@@ -118,9 +110,8 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       );
 
       if (mounted) {
-        // pop camera first, then push folder — preserves nav stack
-        context.pop();
-        context.push(AppRoutes.folderPath(docId));
+        // Use go() for absolute navigation — safe regardless of stack state
+        context.go(AppRoutes.folderPath(docId));
       }
     } on DocScanException catch (e) {
       if (mounted) {
@@ -135,6 +126,8 @@ class _CameraPageState extends ConsumerState<CameraPage> {
     }
   }
 
+  /// Appends scanned PDF pages as images to an existing document.
+  /// Rasters the PDF into individual JPEGs so getDocumentImages() can find them.
   Future<void> _appendToExistingDocument(
     DocumentService svc,
     String pdfPath,
@@ -153,9 +146,31 @@ class _CameraPageState extends ConsumerState<CameraPage> {
     }
 
     try {
-      await svc.addImages(widget.existingDocId!, [cleanPath]);
+      // Raster each PDF page to a JPEG so the image folder can display them
+      final pdfBytes = await File(cleanPath).readAsBytes();
+      final tempDir = await getTemporaryDirectory();
+      final imagePaths = <String>[];
+
+      final rasters = Printing.raster(pdfBytes, dpi: 150);
+      int pageIndex = 0;
+      await for (final page in rasters) {
+        final png = await page.toPng();
+        final outPath =
+            p.join(tempDir.path, 'scan_append_${pageIndex++}.png');
+        await File(outPath).writeAsBytes(png);
+        imagePaths.add(outPath);
+      }
+
+      if (imagePaths.isEmpty) {
+        // Fallback: save PDF directly if rasterisation yields nothing
+        await svc.addImages(widget.existingDocId!, [cleanPath]);
+      } else {
+        await svc.addImages(widget.existingDocId!, imagePaths);
+      }
+
       if (mounted) {
-        showSnackBar(context, 'Added $pageCount page(s) to document');
+        showSnackBar(
+            context, 'Added $pageCount page(s) to document');
         _safePop();
       }
     } catch (e) {
@@ -167,8 +182,17 @@ class _CameraPageState extends ConsumerState<CameraPage> {
   }
 
   Future<String?> _promptTitle() async {
-    final docs =
-        await ref.read(documentsDaoProvider).watchAllDocuments().first;
+    // Use a timeout to avoid hanging if the DB stream stalls
+    final List<Document> docs;
+    try {
+      docs = await ref
+          .read(documentsDaoProvider)
+          .watchAllDocuments()
+          .first
+          .timeout(const Duration(seconds: 3), onTimeout: () => []);
+    } catch (_) {
+      docs = [];
+    }
 
     final baseTitle = 'Document ${formatDate(DateTime.now())}';
     String title = baseTitle;
@@ -178,6 +202,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       counter++;
     }
 
+    if (!mounted) return title;
     final ctrl = TextEditingController(text: title);
     final result = await showDialog<String>(
       context: context,
@@ -196,7 +221,9 @@ class _CameraPageState extends ConsumerState<CameraPage> {
           TextButton(
             onPressed: () => Navigator.pop(
                 ctx,
-                ctrl.text.trim().isEmpty ? title : ctrl.text.trim()),
+                ctrl.text.trim().isEmpty
+                    ? title
+                    : ctrl.text.trim()),
             child: const Text('Use Default'),
           ),
           FilledButton(
