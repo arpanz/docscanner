@@ -3,6 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 
+const _lumaRed = 0.2126;
+const _lumaGreen = 0.7152;
+const _lumaBlue = 0.0722;
+
 enum FilterMode {
   original,
   grayscale,
@@ -10,18 +14,18 @@ enum FilterMode {
   blackwhite;
 
   String get label => switch (this) {
-        original => 'Original',
-        grayscale => 'Gray',
-        enhance => 'Enhance',
-        blackwhite => 'B&W',
-      };
+    original => 'Original',
+    grayscale => 'Gray',
+    enhance => 'Enhance',
+    blackwhite => 'B&W',
+  };
 
   IconData get icon => switch (this) {
-        original => Icons.image_outlined,
-        grayscale => Icons.gradient,
-        enhance => Icons.auto_fix_high,
-        blackwhite => Icons.contrast,
-      };
+    original => Icons.image_outlined,
+    grayscale => Icons.gradient,
+    enhance => Icons.auto_fix_high,
+    blackwhite => Icons.contrast,
+  };
 }
 
 class ImageEditOptions {
@@ -78,16 +82,22 @@ String applyImageEdits(ImageEditArgs args) {
       image = img.grayscale(image);
       break;
     case FilterMode.enhance:
-      image = img.adjustColor(image, contrast: 1.18, saturation: 1.05, brightness: 0.02);
+      image = img.adjustColor(
+        image,
+        contrast: 1.22,
+        saturation: 0.9,
+        brightness: 0.04,
+      );
       break;
     case FilterMode.blackwhite:
       image = img.grayscale(image);
-      image = img.contrast(image, contrast: 160);
-      image = _threshold(image, 150);
+      image = img.adjustColor(image, contrast: 1.4, brightness: 0.06);
+      image = _threshold(image, 165);
       break;
   }
 
-  if (args.options.brightness.abs() > 0.001 || (args.options.contrast - 1).abs() > 0.001) {
+  if (args.options.brightness.abs() > 0.001 ||
+      (args.options.contrast - 1).abs() > 0.001) {
     image = img.adjustColor(
       image,
       brightness: args.options.brightness,
@@ -198,7 +208,9 @@ class _ImageEditSheetState extends State<ImageEditSheet> {
                 const SizedBox(height: 18),
                 Text(
                   'Filter',
-                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 SizedBox(
@@ -217,14 +229,19 @@ class _ImageEditSheetState extends State<ImageEditSheet> {
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 180),
                             width: 88,
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
                             decoration: BoxDecoration(
                               color: selected
                                   ? cs.primaryContainer
                                   : cs.surfaceContainerHighest,
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: selected ? cs.primary : cs.outlineVariant,
+                                color: selected
+                                    ? cs.primary
+                                    : cs.outlineVariant,
                               ),
                             ),
                             child: Column(
@@ -279,7 +296,9 @@ class _ImageEditSheetState extends State<ImageEditSheet> {
                 const SizedBox(height: 12),
                 Text(
                   'Rotate',
-                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 Wrap(
@@ -315,10 +334,7 @@ class _ImageEditSheetState extends State<ImageEditSheet> {
 }
 
 class _PreviewImage extends StatelessWidget {
-  const _PreviewImage({
-    required this.path,
-    required this.options,
-  });
+  const _PreviewImage({required this.path, required this.options});
 
   final String path;
   final ImageEditOptions options;
@@ -336,31 +352,55 @@ class _PreviewImage extends StatelessWidget {
 }
 
 List<double> _previewMatrix(ImageEditOptions options) {
-  double rMul = options.contrast;
-  double gMul = options.contrast;
-  double bMul = options.contrast;
-  var rOffset = options.brightness * 255;
-  var gOffset = options.brightness * 255;
-  var bOffset = options.brightness * 255;
+  var contrast = options.contrast;
+  var brightness = options.brightness;
+  var saturation = 1.0;
 
-  if (options.filter == FilterMode.grayscale || options.filter == FilterMode.blackwhite) {
-    rMul = 0.2126 * options.contrast;
-    gMul = 0.7152 * options.contrast;
-    bMul = 0.0722 * options.contrast;
-  } else if (options.filter == FilterMode.enhance) {
-    rMul = 1.18 * options.contrast;
-    gMul = 1.18 * options.contrast;
-    bMul = 1.18 * options.contrast;
-    rOffset -= 14;
-    gOffset -= 14;
-    bOffset -= 14;
+  switch (options.filter) {
+    case FilterMode.original:
+      break;
+    case FilterMode.grayscale:
+      saturation = 0;
+      break;
+    case FilterMode.enhance:
+      contrast *= 1.22;
+      brightness += 0.04;
+      saturation = 0.9;
+      break;
+    case FilterMode.blackwhite:
+      contrast *= 1.55;
+      brightness += 0.06;
+      saturation = 0;
+      break;
   }
 
+  final offset = brightness * 255;
+  final inverseSaturation = 1 - saturation;
+  final red = inverseSaturation * _lumaRed;
+  final green = inverseSaturation * _lumaGreen;
+  final blue = inverseSaturation * _lumaBlue;
+
   return [
-    rMul, gMul, bMul, 0, rOffset,
-    rMul, gMul, bMul, 0, gOffset,
-    rMul, gMul, bMul, 0, bOffset,
-    0, 0, 0, 1, 0,
+    contrast * (red + saturation),
+    contrast * green,
+    contrast * blue,
+    0,
+    offset,
+    contrast * red,
+    contrast * (green + saturation),
+    contrast * blue,
+    0,
+    offset,
+    contrast * red,
+    contrast * green,
+    contrast * (blue + saturation),
+    0,
+    offset,
+    0,
+    0,
+    0,
+    1,
+    0,
   ];
 }
 
@@ -393,7 +433,9 @@ class _SliderTile extends StatelessWidget {
           children: [
             Text(
               title,
-              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const Spacer(),
             Text(label, style: theme.textTheme.labelMedium),

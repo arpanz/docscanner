@@ -1,22 +1,25 @@
 // lib/features/manager/document_folder_page.dart
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 import 'package:pdf/pdf.dart';
 import 'package:share_plus/share_plus.dart';
+
 import '../../core/app_prefs.dart';
+import '../../core/router.dart';
+import '../../core/utils.dart';
 import '../../database/app_database.dart';
-import '../camera/widgets/crop_enhance_sheet.dart';
 import '../../shared/services/document_service.dart';
 import '../../shared/services/ocr_service.dart';
 import '../../shared/services/pdf_service.dart';
-import '../../core/router.dart';
-import '../../core/utils.dart';
 import '../../shared/widgets/app_empty_state.dart';
+import '../camera/widgets/crop_enhance_sheet.dart';
 
 class DocumentFolderPage extends ConsumerStatefulWidget {
   const DocumentFolderPage({super.key, required this.docId});
@@ -36,6 +39,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
   final Set<String> _selectedImages = {};
   Document? _document;
   List<String> _cachedImagePaths = [];
+  Map<String, _ImageItemDetails> _imageDetailsByPath = {};
   bool _imagesLoaded = false;
   bool _isEditing = false;
   String? _editProgressText;
@@ -87,7 +91,19 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
 
     setState(() {
       _cachedImagePaths = paths;
+      _imageDetailsByPath = {};
       _imagesLoaded = true;
+    });
+
+    if (paths.isEmpty) return;
+    final rawDetails = await compute(_readImageDetails, paths);
+    if (!mounted || !listEquals(paths, _cachedImagePaths)) return;
+
+    setState(() {
+      _imageDetailsByPath = {
+        for (final raw in rawDetails)
+          raw['path']! as String: _ImageItemDetails.fromMap(raw),
+      };
     });
   }
 
@@ -190,6 +206,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
       await ref
           .read(documentServiceProvider)
           .savePdfToDocumentFolder(widget.docId, tempPdf);
+      await _loadDocument();
 
       if (!mounted) return;
       if (exitSelectMode && _selectMode) {
@@ -204,13 +221,12 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),
-            action: SnackBarAction(
-              label: 'View',
-              onPressed: _viewPdf,
-            ),
+            action: SnackBarAction(label: 'View', onPressed: _viewPdf),
           ),
         );
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('PDF creation failed for doc ${widget.docId}: $e');
+      debugPrintStack(stackTrace: st);
       if (mounted) {
         showSnackBar(
           context,
@@ -381,7 +397,9 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
     if (_document == null || paths.isEmpty || _isEditing) return;
 
     final options = await _pickEditOptions(
-      title: pickerTitle ?? (applyToAll ? 'Edit all pages' : 'Edit selected pages'),
+      title:
+          pickerTitle ??
+          (applyToAll ? 'Edit all pages' : 'Edit selected pages'),
       previewImagePath: paths.first,
     );
     if (options == null) return;
@@ -470,6 +488,25 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
               },
             ),
             ListTile(
+              leading: const Icon(Icons.text_snippet_outlined),
+              title: const Text('Extract text from this image'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _extractTextForPaths([
+                  imagePath,
+                ], noPagesMessage: 'This image is no longer available.');
+              },
+            ),
+            if (_document?.pdfPath != null)
+              ListTile(
+                leading: const Icon(Icons.visibility_outlined),
+                title: const Text('View current PDF'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _viewPdf();
+                },
+              ),
+            ListTile(
               leading: Icon(
                 Icons.delete_outline,
                 color: Theme.of(ctx).colorScheme.error,
@@ -516,13 +553,14 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
     return showModalBottomSheet<ImageEditOptions>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => ImageEditSheet(
-        imagePath: previewImagePath,
-      ),
+      builder: (_) => ImageEditSheet(imagePath: previewImagePath),
     );
   }
 
-  Future<bool> _applyEditsToImage(String imagePath, ImageEditOptions options) async {
+  Future<bool> _applyEditsToImage(
+    String imagePath,
+    ImageEditOptions options,
+  ) async {
     if (!File(imagePath).existsSync()) return false;
 
     final tempPath = p.join(
@@ -575,11 +613,16 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
     if (_document == null) return;
     final sourcePaths = _cachedImagePaths.isNotEmpty
         ? _cachedImagePaths
-        : [
-            if (_document?.coverImagePath != null) _document!.coverImagePath!,
-          ];
+        : [if (_document?.coverImagePath != null) _document!.coverImagePath!];
+    await _extractTextForPaths(sourcePaths);
+  }
+
+  Future<void> _extractTextForPaths(
+    List<String> sourcePaths, {
+    String noPagesMessage = 'No pages available for text extraction.',
+  }) async {
     if (sourcePaths.isEmpty) {
-      showSnackBar(context, 'No pages available for text extraction.', isError: true);
+      showSnackBar(context, noPagesMessage, isError: true);
       return;
     }
 
@@ -602,7 +645,9 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
     );
 
     try {
-      final text = await ref.read(ocrServiceProvider).extractTextFromPaths(sourcePaths);
+      final text = await ref
+          .read(ocrServiceProvider)
+          .extractTextFromPaths(sourcePaths);
       if (!mounted) return;
       Navigator.pop(context);
       await showModalBottomSheet<void>(
@@ -616,7 +661,10 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
       Navigator.pop(context);
       showSnackBar(
         context,
-        userFacingError(e, fallback: 'Could not extract text from these pages.'),
+        userFacingError(
+          e,
+          fallback: 'Could not extract text from these pages.',
+        ),
         isError: true,
       );
     }
@@ -633,6 +681,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
     final cs = theme.colorScheme;
     final imagePaths = _cachedImagePaths;
     final hasImages = imagePaths.isNotEmpty;
+    final isListView = ref.watch(folderListPreferenceProvider);
 
     return PopScope(
       // Fix: if in reorder or select mode, back button exits the mode
@@ -723,6 +772,20 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
               ),
               if (hasImages)
                 IconButton(
+                  icon: Icon(
+                    isListView
+                        ? Icons.grid_view_rounded
+                        : Icons.view_list_rounded,
+                  ),
+                  tooltip: isListView
+                      ? 'Switch to grid view'
+                      : 'Switch to list view',
+                  onPressed: () => ref
+                      .read(folderListPreferenceProvider.notifier)
+                      .setValue(!isListView),
+                ),
+              if (hasImages)
+                IconButton(
                   icon: const Icon(Icons.auto_fix_high_rounded),
                   onPressed: _isEditing ? null : _editAllPages,
                   tooltip: 'Edit all pages',
@@ -806,6 +869,36 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                 },
               )
             // ── Normal / select mode: 3-column grid ──
+            : isListView
+            ? ListView.separated(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                itemCount: imagePaths.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  final imagePath = imagePaths[index];
+                  return _ImageListTile(
+                    imagePath: imagePath,
+                    pageNumber: index + 1,
+                    details: _imageDetailsByPath[imagePath],
+                    isSelected: _selectedImages.contains(imagePath),
+                    selectMode: _selectMode,
+                    onTap: () {
+                      if (_selectMode) {
+                        _toggleImageSelection(imagePath);
+                      } else {
+                        _openFullScreen(context, imagePaths, index);
+                      }
+                    },
+                    onLongPress: () {
+                      if (_selectMode) {
+                        _toggleImageSelection(imagePath);
+                      } else {
+                        _showSingleImageActions(imagePath);
+                      }
+                    },
+                  );
+                },
+              )
             : GridView.builder(
                 padding: const EdgeInsets.all(8),
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -861,7 +954,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                   color: cs.surface,
                   boxShadow: [
                     BoxShadow(
-                      color: cs.shadow.withOpacity(0.08),
+                      color: cs.shadow.withValues(alpha: 0.08),
                       blurRadius: 8,
                       offset: const Offset(0, -2),
                     ),
@@ -875,61 +968,63 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                     ),
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
-                      child: Row(children: [
-                        _ActionChip(
-                          icon: Icons.auto_fix_high_rounded,
-                          label: _selectMode ? 'Edit Selected' : 'Edit All',
-                          color: cs.tertiary,
-                          onPressed: _isEditing
-                              ? null
-                              : (_selectMode ? _editSelected : _editAllPages),
-                        ),
-                        const SizedBox(width: 10),
-                        _ActionChip(
-                          icon: Icons.picture_as_pdf,
-                          label: _selectMode ? 'PDF Selected' : 'PDF All',
-                          color: cs.secondary,
-                          onPressed: _isEditing
-                              ? null
-                              : (_selectMode ? _createPdf : _createPdfAll),
-                        ),
-                        const SizedBox(width: 10),
-                        _ActionChip(
-                          icon: Icons.share,
-                          label: _selectMode ? 'Share Selected' : 'Share All',
-                          color: cs.primary,
-                          onPressed: _isEditing
-                              ? null
-                              : (_selectMode ? _shareSelected : _shareAll),
-                        ),
-                        if (_document?.pdfPath != null) ...[
+                      child: Row(
+                        children: [
+                          _ActionChip(
+                            icon: Icons.auto_fix_high_rounded,
+                            label: _selectMode ? 'Edit Selected' : 'Edit All',
+                            color: cs.tertiary,
+                            onPressed: _isEditing
+                                ? null
+                                : (_selectMode ? _editSelected : _editAllPages),
+                          ),
                           const SizedBox(width: 10),
                           _ActionChip(
-                            icon: Icons.visibility_outlined,
-                            label: 'View PDF',
+                            icon: Icons.picture_as_pdf,
+                            label: _selectMode ? 'PDF Selected' : 'PDF All',
+                            color: cs.secondary,
+                            onPressed: _isEditing
+                                ? null
+                                : (_selectMode ? _createPdf : _createPdfAll),
+                          ),
+                          const SizedBox(width: 10),
+                          _ActionChip(
+                            icon: Icons.share,
+                            label: _selectMode ? 'Share Selected' : 'Share All',
                             color: cs.primary,
-                            onPressed: _viewPdf,
+                            onPressed: _isEditing
+                                ? null
+                                : (_selectMode ? _shareSelected : _shareAll),
+                          ),
+                          if (_document?.pdfPath != null) ...[
+                            const SizedBox(width: 10),
+                            _ActionChip(
+                              icon: Icons.visibility_outlined,
+                              label: 'View PDF',
+                              color: cs.primary,
+                              onPressed: _viewPdf,
+                            ),
+                          ],
+                          const SizedBox(width: 10),
+                          _ActionChip(
+                            icon: Icons.text_snippet_outlined,
+                            label: 'OCR',
+                            color: cs.primary,
+                            onPressed: _extractText,
+                          ),
+                          const SizedBox(width: 10),
+                          OutlinedButton.icon(
+                            onPressed: _isEditing
+                                ? null
+                                : (_selectMode ? _deleteSelected : _deleteAll),
+                            icon: Icon(Icons.delete_outline, color: cs.error),
+                            label: Text(
+                              _selectMode ? 'Delete Selected' : 'Delete All',
+                              style: TextStyle(color: cs.error),
+                            ),
                           ),
                         ],
-                        const SizedBox(width: 10),
-                        _ActionChip(
-                          icon: Icons.text_snippet_outlined,
-                          label: 'OCR',
-                          color: cs.primary,
-                          onPressed: _extractText,
-                        ),
-                        const SizedBox(width: 10),
-                        OutlinedButton.icon(
-                          onPressed: _isEditing
-                              ? null
-                              : (_selectMode ? _deleteSelected : _deleteAll),
-                          icon: Icon(Icons.delete_outline, color: cs.error),
-                          label: Text(
-                            _selectMode ? 'Delete Selected' : 'Delete All',
-                            style: TextStyle(color: cs.error),
-                          ),
-                        ),
-                      ]),
+                      ),
                     ),
                   ),
                 ),
@@ -958,9 +1053,16 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
         .push<bool>(
           MaterialPageRoute(
             builder: (_) => _FullScreenImageViewer(
+              docId: widget.docId,
               imagePaths: paths,
+              initialImageDetailsByPath: {
+                for (final path in paths)
+                  if (_imageDetailsByPath[path] != null)
+                    path: _imageDetailsByPath[path]!,
+              },
               initialIndex: initialIndex,
               title: _document?.title ?? 'Document',
+              hasPdf: _document?.pdfPath != null,
             ),
           ),
         )
@@ -1147,23 +1249,35 @@ class _ReorderTile extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // Full-screen image viewer
 // ---------------------------------------------------------------------------
-class _FullScreenImageViewer extends StatefulWidget {
+class _FullScreenImageViewer extends ConsumerStatefulWidget {
   const _FullScreenImageViewer({
+    required this.docId,
     required this.imagePaths,
+    required this.initialImageDetailsByPath,
     required this.initialIndex,
     required this.title,
+    required this.hasPdf,
   });
+
+  final int docId;
   final List<String> imagePaths;
+  final Map<String, _ImageItemDetails> initialImageDetailsByPath;
   final int initialIndex;
   final String title;
+  final bool hasPdf;
 
   @override
-  State<_FullScreenImageViewer> createState() => _FullScreenImageViewerState();
+  ConsumerState<_FullScreenImageViewer> createState() =>
+      _FullScreenImageViewerState();
 }
 
-class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
+class _FullScreenImageViewerState
+    extends ConsumerState<_FullScreenImageViewer> {
   late int _currentIndex;
   late PageController _pageController;
+  late List<String> _imagePaths;
+  late Map<String, _ImageItemDetails> _imageDetailsByPath;
+  late bool _hasPdf;
   bool _isEditing = false;
   bool _editedAny = false;
 
@@ -1171,6 +1285,11 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
+    _imagePaths = List<String>.from(widget.imagePaths);
+    _imageDetailsByPath = Map<String, _ImageItemDetails>.from(
+      widget.initialImageDetailsByPath,
+    );
+    _hasPdf = widget.hasPdf;
     _pageController = PageController(initialPage: widget.initialIndex);
   }
 
@@ -1182,65 +1301,111 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final cs = Theme.of(context).colorScheme;
+    final currentPath = _imagePaths.isEmpty ? null : _imagePaths[_currentIndex];
+    final currentDetails = currentPath == null
+        ? null
+        : _imageDetailsByPath[currentPath];
+
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: cs.surfaceContainerLowest,
       appBar: AppBar(
         backgroundColor: cs.surface,
+        scrolledUnderElevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(_editedAny),
         ),
-        title: Text(widget.title),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.auto_fix_high_rounded),
-            tooltip: 'Edit page',
-            onPressed: _isEditing ? null : _editCurrentPage,
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Center(
-              child: Text(
-                '${_currentIndex + 1} / ${widget.imagePaths.length}',
-                style: const TextStyle(fontWeight: FontWeight.w600),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(widget.title),
+            Text(
+              'Page ${_currentIndex + 1} of ${_imagePaths.length}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-      body: PageView.builder(
-        controller: _pageController,
-        itemCount: widget.imagePaths.length,
-        onPageChanged: (i) => setState(() => _currentIndex = i),
-        itemBuilder: (ctx, i) => Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-          child: Container(
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(8),
-              boxShadow: [
-                BoxShadow(
-                  color: cs.shadow.withOpacity(0.18),
-                  blurRadius: 24,
-                  offset: const Offset(0, 8),
-                ),
-              ],
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+            child: _ViewerPageSummary(
+              pageNumber: _currentIndex + 1,
+              details: currentDetails,
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: InteractiveViewer(
-                minScale: 0.5,
-                maxScale: 4.0,
-                child: Center(
-                  child: Image.file(
-                    File(widget.imagePaths[i]),
-                    fit: BoxFit.contain,
-                    width: double.infinity,
-                    errorBuilder: (ctx, err, _) => Center(
-                      child: Text(
-                        'Cannot load page ${i + 1}',
-                        style: TextStyle(color: cs.onSurfaceVariant),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [cs.surface, cs.surfaceContainerLow],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(
+                    color: cs.outlineVariant.withValues(alpha: 0.65),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: cs.shadow.withValues(alpha: 0.08),
+                      blurRadius: 28,
+                      offset: const Offset(0, 14),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(28),
+                  child: PageView.builder(
+                    controller: _pageController,
+                    itemCount: _imagePaths.length,
+                    onPageChanged: (i) => setState(() => _currentIndex = i),
+                    itemBuilder: (ctx, i) => Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: cs.surface,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: cs.shadow.withValues(alpha: 0.08),
+                              blurRadius: 18,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          child: InteractiveViewer(
+                            minScale: 0.8,
+                            maxScale: 4.0,
+                            child: Center(
+                              child: Image.file(
+                                File(_imagePaths[i]),
+                                fit: BoxFit.contain,
+                                width: double.infinity,
+                                filterQuality: FilterQuality.high,
+                                errorBuilder: (ctx, err, _) => Center(
+                                  child: Text(
+                                    'Cannot load page ${i + 1}',
+                                    style: TextStyle(
+                                      color: cs.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -1248,8 +1413,108 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
               ),
             ),
           ),
-        ),
+        ],
       ),
+      bottomNavigationBar: _imagePaths.isEmpty
+          ? null
+          : Container(
+              decoration: BoxDecoration(
+                color: cs.surface,
+                boxShadow: [
+                  BoxShadow(
+                    color: cs.shadow.withValues(alpha: 0.08),
+                    blurRadius: 10,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
+              ),
+              child: SafeArea(
+                top: false,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_imagePaths.length > 1)
+                      SizedBox(
+                        height: 102,
+                        child: ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _imagePaths.length,
+                          separatorBuilder: (_, _) => const SizedBox(width: 10),
+                          itemBuilder: (context, index) {
+                            final imagePath = _imagePaths[index];
+                            return _ViewerThumbnail(
+                              imagePath: imagePath,
+                              pageNumber: index + 1,
+                              isActive: index == _currentIndex,
+                              onTap: () => _jumpToPage(index),
+                            );
+                          },
+                        ),
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            _ActionChip(
+                              icon: Icons.auto_fix_high_rounded,
+                              label: 'Edit',
+                              color: cs.tertiary,
+                              onPressed: _isEditing ? null : _editCurrentPage,
+                            ),
+                            const SizedBox(width: 10),
+                            _ActionChip(
+                              icon: Icons.picture_as_pdf,
+                              label: 'PDF',
+                              color: cs.secondary,
+                              onPressed: _isEditing
+                                  ? null
+                                  : _createPdfForCurrentPage,
+                            ),
+                            const SizedBox(width: 10),
+                            _ActionChip(
+                              icon: Icons.share,
+                              label: 'Share',
+                              color: cs.primary,
+                              onPressed: _isEditing ? null : _shareCurrentPage,
+                            ),
+                            if (_hasPdf) ...[
+                              const SizedBox(width: 10),
+                              _ActionChip(
+                                icon: Icons.visibility_outlined,
+                                label: 'View PDF',
+                                color: cs.primary,
+                                onPressed: _viewPdf,
+                              ),
+                            ],
+                            const SizedBox(width: 10),
+                            _ActionChip(
+                              icon: Icons.text_snippet_outlined,
+                              label: 'OCR',
+                              color: cs.primary,
+                              onPressed: _isEditing
+                                  ? null
+                                  : _extractTextForCurrentPage,
+                            ),
+                            const SizedBox(width: 10),
+                            OutlinedButton.icon(
+                              onPressed: _isEditing ? null : _deleteCurrentPage,
+                              icon: Icon(Icons.delete_outline, color: cs.error),
+                              label: Text(
+                                'Delete',
+                                style: TextStyle(color: cs.error),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
       floatingActionButton: _isEditing
           ? const SizedBox(
               width: 56,
@@ -1263,17 +1528,28 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
     );
   }
 
+  Future<void> _jumpToPage(int index) async {
+    await _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   Future<void> _editCurrentPage() async {
+    final imagePath = _imagePaths[_currentIndex];
     final options = await showModalBottomSheet<ImageEditOptions>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => ImageEditSheet(imagePath: widget.imagePaths[_currentIndex]),
+      builder: (_) => ImageEditSheet(imagePath: imagePath),
     );
     if (options == null) return;
 
     setState(() => _isEditing = true);
-    final imagePath = widget.imagePaths[_currentIndex];
     final edited = await _applyEditsToImage(imagePath, options);
+    if (edited) {
+      await _refreshDetailsForPath(imagePath);
+    }
 
     if (!mounted) return;
     setState(() {
@@ -1281,16 +1557,219 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
       _editedAny = _editedAny || edited;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          edited ? 'Page updated' : 'Failed to edit page',
-        ),
-      ),
+    showSnackBar(
+      context,
+      edited ? 'Page updated' : 'Failed to edit page',
+      isError: !edited,
     );
   }
 
-  Future<bool> _applyEditsToImage(String imagePath, ImageEditOptions options) async {
+  Future<void> _createPdfForCurrentPage() async {
+    final imagePath = _imagePaths[_currentIndex];
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Create PDF'),
+        content: const Text('Create a PDF from this page?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      final pageSize = PdfPageSizeOption.values.firstWhere(
+        (option) => option.name == ref.read(pageSizePreferenceProvider),
+        orElse: () => PdfPageSizeOption.a4,
+      );
+      final pdfService = ref.read(pdfServiceProvider);
+      final tempPdf = await pdfService.buildPdf(
+        title: widget.title,
+        imagePaths: [imagePath],
+        pageFormat: pageSize == PdfPageSizeOption.letter
+            ? PdfPageFormat.letter
+            : PdfPageFormat.a4,
+      );
+
+      await ref
+          .read(documentServiceProvider)
+          .savePdfToDocumentFolder(widget.docId, tempPdf);
+
+      if (!mounted) return;
+      setState(() {
+        _editedAny = true;
+        _hasPdf = true;
+      });
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: const Text('PDF created successfully'),
+            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(label: 'View', onPressed: _viewPdf),
+          ),
+        );
+    } catch (e) {
+      if (!mounted) return;
+      showSnackBar(
+        context,
+        userFacingError(e, fallback: 'Could not create that PDF.'),
+        isError: true,
+      );
+    }
+  }
+
+  Future<void> _shareCurrentPage() async {
+    final imagePath = _imagePaths[_currentIndex];
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(imagePath)],
+          subject: widget.title,
+          text: 'Sharing this image',
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showSnackBar(
+        context,
+        userFacingError(e, fallback: 'Could not share this page.'),
+        isError: true,
+      );
+    }
+  }
+
+  Future<void> _extractTextForCurrentPage() async {
+    final imagePath = _imagePaths[_currentIndex];
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2.4),
+            ),
+            SizedBox(width: 12),
+            Expanded(child: Text('Extracting text...')),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final text = await ref.read(ocrServiceProvider).extractTextFromPaths([
+        imagePath,
+      ]);
+      if (!mounted) return;
+      Navigator.pop(context);
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (ctx) => _OcrSheet(text: text),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      showSnackBar(
+        context,
+        userFacingError(e, fallback: 'Could not extract text from this page.'),
+        isError: true,
+      );
+    }
+  }
+
+  Future<void> _deleteCurrentPage() async {
+    final imagePath = _imagePaths[_currentIndex];
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete this page?'),
+        content: const Text('This page will be deleted permanently.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await ref.read(documentServiceProvider).deleteImages(widget.docId, [
+        imagePath,
+      ]);
+      if (!mounted) return;
+
+      if (_imagePaths.length == 1) {
+        Navigator.of(context).pop(true);
+        return;
+      }
+
+      setState(() {
+        _imagePaths.removeAt(_currentIndex);
+        _imageDetailsByPath.remove(imagePath);
+        if (_currentIndex >= _imagePaths.length) {
+          _currentIndex = _imagePaths.length - 1;
+        }
+        _editedAny = true;
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_pageController.hasClients) {
+          _pageController.jumpToPage(_currentIndex);
+        }
+      });
+
+      showSnackBar(context, 'Page deleted');
+    } catch (e) {
+      if (!mounted) return;
+      showSnackBar(
+        context,
+        userFacingError(e, fallback: 'Could not delete this page.'),
+        isError: true,
+      );
+    }
+  }
+
+  void _viewPdf() {
+    context.push(AppRoutes.viewerPath(widget.docId));
+  }
+
+  Future<void> _refreshDetailsForPath(String imagePath) async {
+    final rawDetails = await compute(_readImageDetails, [imagePath]);
+    if (!mounted || rawDetails.isEmpty) return;
+
+    setState(() {
+      _imageDetailsByPath[imagePath] = _ImageItemDetails.fromMap(
+        rawDetails.first,
+      );
+    });
+  }
+
+  Future<bool> _applyEditsToImage(
+    String imagePath,
+    ImageEditOptions options,
+  ) async {
     if (!File(imagePath).existsSync()) return false;
 
     final tempPath = p.join(
@@ -1299,10 +1778,7 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
     );
 
     try {
-      final backup = File('$imagePath.bak');
-      if (!await backup.exists()) {
-        await File(imagePath).copy(backup.path);
-      }
+      await ref.read(documentServiceProvider).backupOriginalImage(imagePath);
       final processedPath = await compute(
         applyImageEdits,
         ImageEditArgs(
@@ -1335,7 +1811,9 @@ class _OcrSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final content = text.trim().isEmpty ? 'No text was detected on these pages.' : text.trim();
+    final content = text.trim().isEmpty
+        ? 'No text was detected on these pages.'
+        : text.trim();
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -1345,15 +1823,13 @@ class _OcrSheet extends StatelessWidget {
           children: [
             Text(
               'Extracted Text',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 12),
             Flexible(
-              child: SingleChildScrollView(
-                child: SelectableText(content),
-              ),
+              child: SingleChildScrollView(child: SelectableText(content)),
             ),
             const SizedBox(height: 16),
             Row(
@@ -1373,7 +1849,9 @@ class _OcrSheet extends StatelessWidget {
                   onPressed: content.startsWith('No text')
                       ? null
                       : () async {
-                          await SharePlus.instance.share(ShareParams(text: content));
+                          await SharePlus.instance.share(
+                            ShareParams(text: content),
+                          );
                         },
                   icon: const Icon(Icons.share),
                   label: const Text('Share text'),
@@ -1385,6 +1863,387 @@ class _OcrSheet extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ViewerPageSummary extends StatelessWidget {
+  const _ViewerPageSummary({required this.pageNumber, required this.details});
+
+  final int pageNumber;
+  final _ImageItemDetails? details;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.55)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: cs.primaryContainer,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Page',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: cs.onPrimaryContainer.withValues(alpha: 0.8),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  '$pageNumber',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: cs.onPrimaryContainer,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  details?.summaryLine ?? 'Loading page details...',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  details?.updatedLine ?? 'Preparing image metadata',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ViewerThumbnail extends StatelessWidget {
+  const _ViewerThumbnail({
+    required this.imagePath,
+    required this.pageNumber,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  final String imagePath;
+  final int pageNumber;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        width: 74,
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: isActive ? cs.primaryContainer : cs.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: isActive ? cs.primary : cs.outlineVariant,
+            width: isActive ? 1.4 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.file(
+                  File(imagePath),
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    color: cs.surfaceContainerHighest,
+                    child: Icon(
+                      Icons.broken_image_outlined,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '$pageNumber',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: isActive ? cs.primary : cs.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ImageListTile extends StatelessWidget {
+  const _ImageListTile({
+    required this.imagePath,
+    required this.pageNumber,
+    required this.details,
+    required this.isSelected,
+    required this.selectMode,
+    required this.onTap,
+    required this.onLongPress,
+  });
+
+  final String imagePath;
+  final int pageNumber;
+  final _ImageItemDetails? details;
+  final bool isSelected;
+  final bool selectMode;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: onLongPress,
+        borderRadius: BorderRadius.circular(22),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? cs.primaryContainer.withValues(alpha: 0.42)
+                : cs.surface,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: isSelected ? cs.primary : cs.outlineVariant,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: cs.shadow.withValues(alpha: 0.04),
+                blurRadius: 16,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: SizedBox(
+                      width: 86,
+                      height: 112,
+                      child: Image.file(
+                        File(imagePath),
+                        fit: BoxFit.cover,
+                        errorBuilder: (ctx, err, _) => Container(
+                          color: cs.surfaceContainerHigh,
+                          child: Icon(
+                            Icons.broken_image_outlined,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (selectMode)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? cs.primary
+                              : cs.scrim.withValues(alpha: 0.55),
+                          shape: BoxShape.circle,
+                        ),
+                        padding: const EdgeInsets.all(4),
+                        child: Icon(
+                          isSelected
+                              ? Icons.check_circle
+                              : Icons.circle_outlined,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: cs.secondaryContainer,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            'Page $pageNumber',
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: cs.onSecondaryContainer,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const Spacer(),
+                        if (!selectMode)
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            color: cs.onSurfaceVariant,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      p.basename(imagePath),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      details?.summaryLine ?? 'Loading image details...',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      details?.updatedLine ?? 'Preparing image metadata',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ImageItemDetails {
+  const _ImageItemDetails({
+    required this.path,
+    required this.extensionLabel,
+    required this.sizeBytes,
+    required this.width,
+    required this.height,
+    required this.modifiedAt,
+  });
+
+  factory _ImageItemDetails.fromMap(Map<String, Object?> raw) {
+    final modifiedAtMs = raw['modifiedAtMs'] as int?;
+    return _ImageItemDetails(
+      path: raw['path']! as String,
+      extensionLabel: raw['extensionLabel']! as String,
+      sizeBytes: raw['sizeBytes']! as int,
+      width: raw['width']! as int,
+      height: raw['height']! as int,
+      modifiedAt: modifiedAtMs == null || modifiedAtMs <= 0
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(modifiedAtMs),
+    );
+  }
+
+  final String path;
+  final String extensionLabel;
+  final int sizeBytes;
+  final int width;
+  final int height;
+  final DateTime? modifiedAt;
+
+  String get summaryLine {
+    final parts = <String>[
+      extensionLabel,
+      if (width > 0 && height > 0) '${width}x$height',
+      formatBytes(sizeBytes),
+    ];
+    return parts.join(' | ');
+  }
+
+  String get updatedLine {
+    if (modifiedAt == null) return 'Date unavailable';
+    return 'Updated ${formatDate(modifiedAt!)}';
+  }
+}
+
+List<Map<String, Object?>> _readImageDetails(List<String> paths) {
+  return paths.map((path) {
+    final file = File(path);
+    var sizeBytes = 0;
+    int? modifiedAtMs;
+    var width = 0;
+    var height = 0;
+
+    try {
+      final stat = file.statSync();
+      sizeBytes = stat.size;
+      modifiedAtMs = stat.modified.millisecondsSinceEpoch;
+    } catch (_) {}
+
+    try {
+      final decoded = img.decodeImage(file.readAsBytesSync());
+      if (decoded != null) {
+        width = decoded.width;
+        height = decoded.height;
+      }
+    } catch (_) {}
+
+    final extension = p.extension(path).replaceFirst('.', '').toUpperCase();
+
+    return {
+      'path': path,
+      'extensionLabel': extension.isEmpty ? 'IMG' : extension,
+      'sizeBytes': sizeBytes,
+      'width': width,
+      'height': height,
+      'modifiedAtMs': modifiedAtMs,
+    };
+  }).toList();
 }
 
 // ---------------------------------------------------------------------------
@@ -1433,7 +2292,7 @@ class _ImageTile extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: isSelected
                       ? cs.primary
-                      : cs.scrim.withOpacity(0.55),
+                      : cs.scrim.withValues(alpha: 0.55),
                   shape: BoxShape.circle,
                 ),
                 child: Padding(
@@ -1479,17 +2338,13 @@ class _ActionChip extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: 48),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: foreground.withOpacity(0.1),
+          color: foreground.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              color: foreground,
-              size: 20,
-            ),
+            Icon(icon, color: foreground, size: 20),
             const SizedBox(width: 8),
             Text(
               label,

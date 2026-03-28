@@ -22,7 +22,8 @@ class DocumentManagerPage extends ConsumerStatefulWidget {
   const DocumentManagerPage({super.key});
 
   @override
-  ConsumerState<DocumentManagerPage> createState() => _DocumentManagerPageState();
+  ConsumerState<DocumentManagerPage> createState() =>
+      _DocumentManagerPageState();
 }
 
 class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
@@ -100,8 +101,9 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
                         : Icons.favorite_border_rounded,
                     color: showFavs ? cs.error : null,
                   ),
-                  tooltip:
-                      showFavs ? 'Show all documents' : 'Show favourites only',
+                  tooltip: showFavs
+                      ? 'Show all documents'
+                      : 'Show favourites only',
                   onPressed: () => ref
                       .read(favouritesPreferenceProvider.notifier)
                       .setValue(!showFavs),
@@ -115,7 +117,9 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
                   icon: Icon(
                     isGrid ? Icons.view_list_rounded : Icons.grid_view_rounded,
                   ),
-                  tooltip: isGrid ? 'Switch to list view' : 'Switch to grid view',
+                  tooltip: isGrid
+                      ? 'Switch to list view'
+                      : 'Switch to grid view',
                   onPressed: () => ref
                       .read(gridPreferenceProvider.notifier)
                       .setValue(!isGrid),
@@ -159,16 +163,19 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
                       title: showFavs
                           ? 'No favourites yet'
                           : query.isEmpty
-                              ? 'No documents yet'
-                              : 'No results for "$query"',
+                          ? 'No documents yet'
+                          : 'No results for "$query"',
                       subtitle: showFavs
                           ? 'Mark a document as favourite to keep it close.'
                           : query.isEmpty
-                              ? 'Scan paper docs or import photos from your gallery to get started.'
-                              : null,
-                      action: query.isEmpty ? () => context.push(AppRoutes.camera) : null,
-                      actionLabel:
-                          query.isEmpty ? 'Scan Your First Document' : null,
+                          ? 'Scan paper docs or import photos from your gallery to get started.'
+                          : null,
+                      action: query.isEmpty
+                          ? () => context.push(AppRoutes.camera)
+                          : null,
+                      actionLabel: query.isEmpty
+                          ? 'Scan Your First Document'
+                          : null,
                     ),
                   );
                 }
@@ -178,11 +185,11 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
                       ? SliverGrid.builder(
                           gridDelegate:
                               const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            crossAxisSpacing: 14,
-                            mainAxisSpacing: 14,
-                            childAspectRatio: 0.75,
-                          ),
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 14,
+                                mainAxisSpacing: 14,
+                                childAspectRatio: 0.75,
+                              ),
                           itemCount: docs.length,
                           itemBuilder: (ctx, i) => DocCard(
                             document: docs[i],
@@ -199,8 +206,9 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
                             final doc = docs[i];
                             return ListTile(
                               minVerticalPadding: 12,
-                              contentPadding:
-                                  const EdgeInsets.symmetric(horizontal: 8),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
                               leading: SizedBox(
                                 width: 56,
                                 height: 64,
@@ -210,13 +218,20 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
                                       ? Image.file(
                                           File(doc.coverImagePath!),
                                           fit: BoxFit.cover,
-                                          errorBuilder: (context, error, stackTrace) => Container(
-                                            color: cs.primary.withOpacity(0.1),
-                                            child: Icon(
-                                              Icons.description_outlined,
-                                              color: cs.primary,
-                                            ),
-                                          ),
+                                          errorBuilder:
+                                              (
+                                                context,
+                                                error,
+                                                stackTrace,
+                                              ) => Container(
+                                                color: cs.primary.withOpacity(
+                                                  0.1,
+                                                ),
+                                                child: Icon(
+                                                  Icons.description_outlined,
+                                                  color: cs.primary,
+                                                ),
+                                              ),
                                         )
                                       : Container(
                                           color: cs.primary.withOpacity(0.1),
@@ -229,7 +244,9 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
                               ),
                               title: Text(
                                 doc.title,
-                                style: const TextStyle(fontWeight: FontWeight.w600),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                               subtitle: Text(
                                 '${doc.imageCount} ${doc.imageCount == 1 ? 'page' : 'pages'} · ${formatBytes(doc.folderSizeBytes)}',
@@ -237,7 +254,8 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
                               trailing: const Icon(Icons.chevron_right),
                               onTap: () =>
                                   context.push(AppRoutes.folderPath(doc.id)),
-                              onLongPress: () => _showDocOptions(context, ref, doc),
+                              onLongPress: () =>
+                                  _showDocOptions(context, ref, doc),
                             );
                           },
                         ),
@@ -300,7 +318,9 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
     if (images.isEmpty || !context.mounted) return;
 
     final paths = images.map((x) => x.path).toList();
-    final ctrl = TextEditingController(text: 'Scan ${formatDate(DateTime.now())}');
+    final ctrl = TextEditingController(
+      text: 'Scan ${formatDate(DateTime.now())}',
+    );
     final title = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -391,7 +411,9 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
                 );
                 if (name != null && name.isNotEmpty) {
                   try {
-                    await ref.read(documentServiceProvider).renameDocument(doc.id, name);
+                    await ref
+                        .read(documentServiceProvider)
+                        .renameDocument(doc.id, name);
                     if (context.mounted) {
                       showSnackBar(context, 'Document renamed');
                     }
@@ -399,7 +421,10 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
                     if (context.mounted) {
                       showSnackBar(
                         context,
-                        userFacingError(e, fallback: 'Could not rename this document.'),
+                        userFacingError(
+                          e,
+                          fallback: 'Could not rename this document.',
+                        ),
                         isError: true,
                       );
                     }
@@ -409,7 +434,10 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
             ),
             const Divider(),
             ListTile(
-              leading: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
+              leading: Icon(
+                Icons.delete_outline,
+                color: Theme.of(context).colorScheme.error,
+              ),
               title: Text(
                 'Delete',
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
@@ -420,7 +448,9 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
                   context: context,
                   builder: (ctx) => AlertDialog(
                     title: const Text('Delete document?'),
-                    content: Text('Delete "${doc.title}"? This cannot be undone.'),
+                    content: Text(
+                      'Delete "${doc.title}"? This cannot be undone.',
+                    ),
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.pop(ctx, false),
@@ -439,7 +469,9 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
                 if (ok == true) {
                   HapticFeedback.mediumImpact();
                   try {
-                    await ref.read(documentServiceProvider).deleteDocument(doc.id);
+                    await ref
+                        .read(documentServiceProvider)
+                        .deleteDocument(doc.id);
                     if (context.mounted) {
                       showSnackBar(context, 'Document deleted');
                     }
@@ -447,7 +479,10 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
                     if (context.mounted) {
                       showSnackBar(
                         context,
-                        userFacingError(e, fallback: 'Could not delete this document.'),
+                        userFacingError(
+                          e,
+                          fallback: 'Could not delete this document.',
+                        ),
                         isError: true,
                       );
                     }
@@ -473,10 +508,7 @@ class _GradientFAB extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            cs.primary,
-            Color.lerp(cs.primary, cs.tertiary, 0.55)!,
-          ],
+          colors: [cs.primary, Color.lerp(cs.primary, cs.tertiary, 0.55)!],
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
         ),
@@ -524,10 +556,7 @@ class _GradientFAB extends StatelessWidget {
 }
 
 class _OnboardingSheet extends StatelessWidget {
-  const _OnboardingSheet({
-    required this.onScan,
-    required this.onImport,
-  });
+  const _OnboardingSheet({required this.onScan, required this.onImport});
 
   final VoidCallback onScan;
   final VoidCallback onImport;

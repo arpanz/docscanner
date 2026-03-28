@@ -1,6 +1,8 @@
 // lib/shared/services/pdf_service.dart
+import 'dart:typed_data';
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:pdf/pdf.dart';
@@ -20,10 +22,20 @@ class PdfService {
     required List<String> imagePaths,
     PdfPageFormat pageFormat = PdfPageFormat.a4,
   }) async {
+    if (imagePaths.isEmpty) {
+      throw Exception('No images were provided for PDF creation.');
+    }
+
     final doc = pw.Document(title: title);
 
-    for (final imgPath in imagePaths) {
-      final bytes = await File(imgPath).readAsBytes();
+    for (final rawPath in imagePaths) {
+      final imgPath = _cleanFilePath(rawPath);
+      final file = File(imgPath);
+      if (!await file.exists()) {
+        throw Exception('Image file not found: $imgPath');
+      }
+
+      final bytes = await _preparePdfImageBytes(file);
       final image = pw.MemoryImage(bytes);
 
       doc.addPage(
@@ -74,6 +86,24 @@ class PdfService {
 
   String _sanitize(String name) =>
       name.replaceAll(RegExp(r'[^\w\s-]'), '').trim().replaceAll(' ', '_');
+
+  String _cleanFilePath(String path) {
+    if (path.startsWith('file://')) {
+      return Uri.parse(path).toFilePath();
+    }
+    return path;
+  }
+
+  Future<Uint8List> _preparePdfImageBytes(File file) async {
+    final originalBytes = await file.readAsBytes();
+    final decoded = img.decodeImage(originalBytes);
+    if (decoded == null) {
+      throw Exception('Unsupported image format: ${file.path}');
+    }
+
+    final normalized = img.bakeOrientation(decoded);
+    return Uint8List.fromList(img.encodeJpg(normalized, quality: 92));
+  }
 }
 
 final pdfServiceProvider = Provider<PdfService>((ref) => PdfService());

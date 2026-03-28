@@ -28,8 +28,16 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
   Future<int> insertDocument(DocumentsCompanion entry) =>
       into(documents).insert(entry);
 
-  Future<bool> updateDocument(DocumentsCompanion entry) =>
-      update(documents).replace(entry);
+  Future<bool> updateDocument(DocumentsCompanion entry) async {
+    if (!entry.id.present) {
+      throw ArgumentError('Document id is required for updates.');
+    }
+
+    final rows = await (update(documents)
+          ..where((d) => d.id.equals(entry.id.value)))
+        .write(entry.copyWith(id: const Value.absent()));
+    return rows > 0;
+  }
 
   Future<int> deleteDocument(int id) =>
       (delete(documents)..where((d) => d.id.equals(id))).go();

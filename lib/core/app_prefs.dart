@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const _kSortKey = 'sort_option';
 const _kGridKey = 'is_grid_view';
+const _kFolderListKey = 'folder_list_view';
 const _kFavouritesKey = 'show_favourites_only';
 const _kPageSizeKey = 'pdf_page_size';
 const _kOnboardingSeenKey = 'has_seen_onboarding';
@@ -11,9 +12,9 @@ enum PdfPageSizeOption { a4, letter }
 
 extension PdfPageSizeOptionLabel on PdfPageSizeOption {
   String get label => switch (this) {
-        PdfPageSizeOption.a4 => 'A4',
-        PdfPageSizeOption.letter => 'US Letter',
-      };
+    PdfPageSizeOption.a4 => 'A4',
+    PdfPageSizeOption.letter => 'US Letter',
+  };
 }
 
 class PersistentStringNotifier extends Notifier<String> {
@@ -72,27 +73,34 @@ class GridPreferenceNotifier extends PersistentBoolNotifier {
   GridPreferenceNotifier() : super(_kGridKey, true);
 }
 
+class FolderListPreferenceNotifier extends PersistentBoolNotifier {
+  FolderListPreferenceNotifier() : super(_kFolderListKey, true);
+}
+
 class FavouritesPreferenceNotifier extends PersistentBoolNotifier {
   FavouritesPreferenceNotifier() : super(_kFavouritesKey, false);
 }
 
 class PageSizePreferenceNotifier extends PersistentStringNotifier {
   PageSizePreferenceNotifier()
-      : super(_kPageSizeKey, PdfPageSizeOption.a4.name);
+    : super(_kPageSizeKey, PdfPageSizeOption.a4.name);
 }
 
 class OnboardingPreferenceNotifier extends PersistentBoolNotifier {
   OnboardingPreferenceNotifier() : super(_kOnboardingSeenKey, false);
 }
 
-final sortPreferenceProvider =
-    NotifierProvider<SortPreferenceNotifier, String>(
-      SortPreferenceNotifier.new,
-    );
+final sortPreferenceProvider = NotifierProvider<SortPreferenceNotifier, String>(
+  SortPreferenceNotifier.new,
+);
 
-final gridPreferenceProvider =
-    NotifierProvider<GridPreferenceNotifier, bool>(
-      GridPreferenceNotifier.new,
+final gridPreferenceProvider = NotifierProvider<GridPreferenceNotifier, bool>(
+  GridPreferenceNotifier.new,
+);
+
+final folderListPreferenceProvider =
+    NotifierProvider<FolderListPreferenceNotifier, bool>(
+      FolderListPreferenceNotifier.new,
     );
 
 final favouritesPreferenceProvider =

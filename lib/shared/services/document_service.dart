@@ -239,6 +239,11 @@ class DocumentService {
       '${_sanitize(doc.title)}_$timestamp.pdf',
     );
     final saved = await tempPdf.copy(dest);
+    try {
+      if (await tempPdf.exists()) {
+        await tempPdf.delete();
+      }
+    } catch (_) {}
 
     await _docsDao.updateDocument(
       DocumentsCompanion(
