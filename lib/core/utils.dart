@@ -70,9 +70,9 @@ String truncate(String text, int maxLength) {
 /// Returns initials (up to 2 chars) from a document title.
 String initials(String title) {
   final words = title.trim().split(RegExp(r'\s+'));
-  if (words.isEmpty) return '?';
+  if (words.isEmpty || words[0].isEmpty) return '?';
   if (words.length == 1) return words[0][0].toUpperCase();
-  return (words[0][0] + words[1][0]).toUpperCase();
+  return '${words[0][0]}${words[1][0]}'.toUpperCase();
 }
 
 // ---------------------------------------------------------------------------

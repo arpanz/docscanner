@@ -88,8 +88,9 @@ class _CameraPageState extends ConsumerState<CameraPage> {
         _safePop();
       }
     } catch (e) {
+      debugPrint('Scan error: $e');
       if (mounted) {
-        showSnackBar(context, 'Error: $e', isError: true);
+        showSnackBar(context, 'Something went wrong. Please try again.', isError: true);
         _safePop();
       }
     }
@@ -193,8 +194,8 @@ class _CameraPageState extends ConsumerState<CameraPage> {
           onPressed: _safePop,
         ),
       ),
-      body: const Center(
-        child: CircularProgressIndicator(color: Color(0xFF5C4BF5)),
+      body: Center(
+        child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
       ),
     );
   }

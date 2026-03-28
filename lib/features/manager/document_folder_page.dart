@@ -196,13 +196,8 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
             ),
             action: SnackBarAction(
               label: 'View',
-              onPressed: () async {
-                await SharePlus.instance.share(
-                  ShareParams(
-                    files: [XFile(savedPath, mimeType: 'application/pdf')],
-                    subject: _document?.title,
-                  ),
-                );
+              onPressed: () {
+                context.push(AppRoutes.viewerPath(widget.docId));
               },
             ),
           ),
@@ -255,7 +250,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
             child: const Text('Delete'),
           ),
         ],
@@ -443,7 +438,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
               },
             ),
             ListTile(
-              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              leading: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
               title: const Text('Delete this image'),
               onTap: () {
                 Navigator.pop(ctx);
@@ -596,7 +591,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                   _document?.isFavourite == true
                       ? Icons.favorite_rounded
                       : Icons.favorite_border_rounded,
-                  color: _document?.isFavourite == true ? Colors.red : null,
+                  color: _document?.isFavourite == true ? cs.error : null,
                 ),
                 tooltip: _document?.isFavourite == true
                     ? 'Remove from favourites'
@@ -624,6 +619,13 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                   icon: const Icon(Icons.checklist_rounded),
                   onPressed: _isEditing ? null : _toggleSelectMode,
                   tooltip: 'Select pages',
+                ),
+              if (_document?.pdfPath != null)
+                IconButton(
+                  icon: const Icon(Icons.picture_as_pdf_rounded),
+                  onPressed: () =>
+                      context.push(AppRoutes.viewerPath(widget.docId)),
+                  tooltip: 'View PDF',
                 ),
               PopupMenuButton<_MenuAction>(
                 onSelected: (action) => _handleMenu(action),
@@ -738,7 +740,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                   color: cs.surface,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: cs.shadow.withOpacity(0.1),
                       blurRadius: 8,
                       offset: const Offset(0, -2),
                     ),
@@ -756,7 +758,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                         _ActionChip(
                           icon: Icons.auto_fix_high_rounded,
                           label: _selectMode ? 'Edit Selected' : 'Edit All',
-                          color: Colors.teal,
+                          color: cs.tertiary,
                           onPressed: _isEditing
                               ? null
                               : (_selectMode ? _editSelected : _editAllPages),
@@ -764,7 +766,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                         _ActionChip(
                           icon: Icons.picture_as_pdf,
                           label: _selectMode ? 'PDF Selected' : 'PDF All',
-                          color: Colors.deepOrange,
+                          color: cs.secondary,
                           onPressed: _isEditing
                               ? null
                               : (_selectMode ? _createPdf : _createPdfAll),
@@ -780,7 +782,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                         _ActionChip(
                           icon: Icons.delete_outline,
                           label: _selectMode ? 'Delete Selected' : 'Delete All',
-                          color: Colors.red,
+                          color: cs.error,
                           onPressed: _isEditing
                               ? null
                               : (_selectMode ? _deleteSelected : _deleteAll),
@@ -890,7 +892,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
             child: const Text('Delete'),
           ),
         ],
@@ -1050,7 +1052,7 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
               borderRadius: BorderRadius.circular(8),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.18),
+                  color: cs.shadow.withOpacity(0.18),
                   blurRadius: 24,
                   offset: const Offset(0, 8),
                 ),
@@ -1227,12 +1229,12 @@ class _ImageTile extends StatelessWidget {
               right: 4,
               child: Container(
                 decoration: BoxDecoration(
-                  color: isSelected ? Colors.blue : Colors.black54,
+                  color: isSelected ? cs.primary : cs.onSurface.withOpacity(0.54),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   isSelected ? Icons.check_circle : Icons.circle_outlined,
-                  color: Colors.white,
+                  color: cs.onPrimary,
                   size: 24,
                 ),
               ),

@@ -19,6 +19,7 @@ class PageItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isPdf = imagePath.toLowerCase().endsWith('.pdf');
+    final cs = Theme.of(context).colorScheme;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
@@ -27,11 +28,11 @@ class PageItem extends StatelessWidget {
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: cs.surface,
                 borderRadius: BorderRadius.circular(8),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.18),
+                    color: cs.shadow.withOpacity(0.18),
                     blurRadius: 24,
                     offset: const Offset(0, 8),
                   ),
@@ -51,17 +52,20 @@ class PageItem extends StatelessWidget {
             children: [
               Text(
                 'Page ${index + 1}',
-                style: const TextStyle(color: Colors.black45, fontSize: 12),
+                style: TextStyle(color: cs.onSurface.withOpacity(0.45), fontSize: 12),
               ),
-              IconButton(
-                icon: const Icon(
-                  Icons.delete_outline,
-                  color: Colors.red,
-                  size: 20,
+              SizedBox(
+                width: 48,
+                height: 48,
+                child: IconButton(
+                  icon: Icon(
+                    Icons.delete_outline,
+                    color: cs.error,
+                    size: 20,
+                  ),
+                  onPressed: onDelete,
+                  tooltip: 'Delete page',
                 ),
-                onPressed: onDelete,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
               ),
             ],
           ),
@@ -90,7 +94,7 @@ class _ImagePagePreview extends StatelessWidget {
             child: Text(
               'Cannot load page',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red, fontSize: 12),
+              style: TextStyle(color: Theme.of(ctx).colorScheme.error, fontSize: 12),
             ),
           ),
         ),
@@ -99,15 +103,50 @@ class _ImagePagePreview extends StatelessWidget {
   }
 }
 
-class _PdfPagePreview extends StatelessWidget {
+class _PdfPagePreview extends StatefulWidget {
   const _PdfPagePreview({required this.path});
 
   final String path;
 
   @override
+  State<_PdfPagePreview> createState() => _PdfPagePreviewState();
+}
+
+class _PdfPagePreviewState extends State<_PdfPagePreview> {
+  late Future<Uint8List?> _renderFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _renderFuture = _renderPdfPage();
+  }
+
+  Future<Uint8List?> _renderPdfPage() async {
+    try {
+      final file = File(widget.path);
+      if (!await file.exists()) return null;
+
+      final bytes = await file.readAsBytes();
+      final rasters = await Printing.raster(
+        bytes,
+        pages: [0],
+        dpi: 72,
+      ).toList();
+
+      if (rasters.isNotEmpty) {
+        return await rasters.first.toPng();
+      }
+    } catch (e) {
+      return null;
+    }
+    return null;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return FutureBuilder(
-      future: _renderPdfPage(),
+    final cs = Theme.of(context).colorScheme;
+    return FutureBuilder<Uint8List?>(
+      future: _renderFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator.adaptive());
@@ -117,13 +156,14 @@ class _PdfPagePreview extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(
+                Icon(
                   Icons.picture_as_pdf_outlined,
                   size: 48,
-                  color: Colors.red,
+                  color: cs.error,
                 ),
                 const SizedBox(height: 8),
-                Text('PDF Preview', style: TextStyle(color: Colors.grey[600])),
+                Text('PDF Preview',
+                    style: TextStyle(color: cs.onSurfaceVariant)),
               ],
             ),
           );
@@ -141,26 +181,5 @@ class _PdfPagePreview extends StatelessWidget {
         );
       },
     );
-  }
-
-  Future<Uint8List?> _renderPdfPage() async {
-    try {
-      final file = File(path);
-      if (!await file.exists()) return null;
-
-      final bytes = await file.readAsBytes();
-      final rasters = await Printing.raster(
-        bytes,
-        pages: [0],
-        dpi: 72,
-      ).toList();
-
-      if (rasters.isNotEmpty) {
-        return await rasters.first.toPng();
-      }
-    } catch (e) {
-      return null;
-    }
-    return null;
   }
 }

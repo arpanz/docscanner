@@ -48,7 +48,7 @@ class DocCard extends StatelessWidget {
                 offset: const Offset(0, 4),
               ),
               BoxShadow(
-                color: const Color(0xFF5C4BF5).withOpacity(0.04),
+                color: cs.primary.withOpacity(0.04),
                 blurRadius: 24,
                 offset: const Offset(0, 8),
               ),
@@ -139,7 +139,7 @@ class DocCard extends StatelessWidget {
                                   padding: const EdgeInsets.all(4),
                                   decoration: BoxDecoration(
                                     color:
-                                        Colors.red.withOpacity(0.8),
+                                        cs.error.withOpacity(0.8),
                                     shape: BoxShape.circle,
                                   ),
                                   child: const Icon(

@@ -49,7 +49,7 @@ class DocumentManagerPage extends ConsumerWidget {
                   showFavs
                       ? Icons.favorite_rounded
                       : Icons.favorite_border_rounded,
-                  color: showFavs ? Colors.red : null,
+                  color: showFavs ? theme.colorScheme.error : null,
                 ),
                 tooltip: showFavs
                     ? 'Show all documents'
@@ -307,7 +307,7 @@ class DocumentManagerPage extends ConsumerWidget {
                     messenger.showSnackBar(
                       SnackBar(
                         content: Text('Failed to rename: $e'),
-                        backgroundColor: Colors.red,
+                        backgroundColor: theme.colorScheme.error,
                       ),
                     );
                   }
@@ -341,7 +341,7 @@ class DocumentManagerPage extends ConsumerWidget {
                       FilledButton(
                         onPressed: () => Navigator.pop(ctx, true),
                         style: FilledButton.styleFrom(
-                          backgroundColor: Colors.red,
+                          backgroundColor: theme.colorScheme.error,
                         ),
                         child: const Text('Delete'),
                       ),
@@ -357,7 +357,7 @@ class DocumentManagerPage extends ConsumerWidget {
                     messenger.showSnackBar(
                       SnackBar(
                         content: Text('Failed to delete: $e'),
-                        backgroundColor: Colors.red,
+                        backgroundColor: theme.colorScheme.error,
                       ),
                     );
                   }

@@ -44,7 +44,7 @@ final filteredDocumentsProvider = Provider<AsyncValue<List<Document>>>((ref) {
 
   return allAsync.whenData((docs) {
     var filtered = query.isEmpty
-        ? docs
+        ? List<Document>.from(docs)
         : docs.where((d) => d.title.toLowerCase().contains(query)).toList();
 
     filtered.sort(
