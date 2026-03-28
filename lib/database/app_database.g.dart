@@ -119,6 +119,18 @@ class $DocumentsTable extends Documents
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _folderSizeBytesMeta = const VerificationMeta(
+    'folderSizeBytes',
+  );
+  @override
+  late final GeneratedColumn<int> folderSizeBytes = GeneratedColumn<int>(
+    'folder_size_bytes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -130,6 +142,7 @@ class $DocumentsTable extends Documents
     imageCount,
     coverImagePath,
     isFavourite,
+    folderSizeBytes,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -204,6 +217,15 @@ class $DocumentsTable extends Documents
         ),
       );
     }
+    if (data.containsKey('folder_size_bytes')) {
+      context.handle(
+        _folderSizeBytesMeta,
+        folderSizeBytes.isAcceptableOrUnknown(
+          data['folder_size_bytes']!,
+          _folderSizeBytesMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -249,6 +271,10 @@ class $DocumentsTable extends Documents
         DriftSqlType.bool,
         data['${effectivePrefix}is_favourite'],
       )!,
+      folderSizeBytes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}folder_size_bytes'],
+      )!,
     );
   }
 
@@ -268,6 +294,7 @@ class Document extends DataClass implements Insertable<Document> {
   final int imageCount;
   final String? coverImagePath;
   final bool isFavourite;
+  final int folderSizeBytes;
   const Document({
     required this.id,
     required this.title,
@@ -278,6 +305,7 @@ class Document extends DataClass implements Insertable<Document> {
     required this.imageCount,
     this.coverImagePath,
     required this.isFavourite,
+    required this.folderSizeBytes,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -295,6 +323,7 @@ class Document extends DataClass implements Insertable<Document> {
       map['cover_image_path'] = Variable<String>(coverImagePath);
     }
     map['is_favourite'] = Variable<bool>(isFavourite);
+    map['folder_size_bytes'] = Variable<int>(folderSizeBytes);
     return map;
   }
 
@@ -313,6 +342,7 @@ class Document extends DataClass implements Insertable<Document> {
           ? const Value.absent()
           : Value(coverImagePath),
       isFavourite: Value(isFavourite),
+      folderSizeBytes: Value(folderSizeBytes),
     );
   }
 
@@ -331,6 +361,7 @@ class Document extends DataClass implements Insertable<Document> {
       imageCount: serializer.fromJson<int>(json['imageCount']),
       coverImagePath: serializer.fromJson<String?>(json['coverImagePath']),
       isFavourite: serializer.fromJson<bool>(json['isFavourite']),
+      folderSizeBytes: serializer.fromJson<int>(json['folderSizeBytes']),
     );
   }
   @override
@@ -346,6 +377,7 @@ class Document extends DataClass implements Insertable<Document> {
       'imageCount': serializer.toJson<int>(imageCount),
       'coverImagePath': serializer.toJson<String?>(coverImagePath),
       'isFavourite': serializer.toJson<bool>(isFavourite),
+      'folderSizeBytes': serializer.toJson<int>(folderSizeBytes),
     };
   }
 
@@ -359,6 +391,7 @@ class Document extends DataClass implements Insertable<Document> {
     int? imageCount,
     Value<String?> coverImagePath = const Value.absent(),
     bool? isFavourite,
+    int? folderSizeBytes,
   }) => Document(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -371,6 +404,7 @@ class Document extends DataClass implements Insertable<Document> {
         ? coverImagePath.value
         : this.coverImagePath,
     isFavourite: isFavourite ?? this.isFavourite,
+    folderSizeBytes: folderSizeBytes ?? this.folderSizeBytes,
   );
   Document copyWithCompanion(DocumentsCompanion data) {
     return Document(
@@ -391,6 +425,9 @@ class Document extends DataClass implements Insertable<Document> {
       isFavourite: data.isFavourite.present
           ? data.isFavourite.value
           : this.isFavourite,
+      folderSizeBytes: data.folderSizeBytes.present
+          ? data.folderSizeBytes.value
+          : this.folderSizeBytes,
     );
   }
 
@@ -405,7 +442,8 @@ class Document extends DataClass implements Insertable<Document> {
           ..write('pdfPath: $pdfPath, ')
           ..write('imageCount: $imageCount, ')
           ..write('coverImagePath: $coverImagePath, ')
-          ..write('isFavourite: $isFavourite')
+          ..write('isFavourite: $isFavourite, ')
+          ..write('folderSizeBytes: $folderSizeBytes')
           ..write(')'))
         .toString();
   }
@@ -421,6 +459,7 @@ class Document extends DataClass implements Insertable<Document> {
     imageCount,
     coverImagePath,
     isFavourite,
+    folderSizeBytes,
   );
   @override
   bool operator ==(Object other) =>
@@ -434,7 +473,8 @@ class Document extends DataClass implements Insertable<Document> {
           other.pdfPath == this.pdfPath &&
           other.imageCount == this.imageCount &&
           other.coverImagePath == this.coverImagePath &&
-          other.isFavourite == this.isFavourite);
+          other.isFavourite == this.isFavourite &&
+          other.folderSizeBytes == this.folderSizeBytes);
 }
 
 class DocumentsCompanion extends UpdateCompanion<Document> {
@@ -447,6 +487,7 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
   final Value<int> imageCount;
   final Value<String?> coverImagePath;
   final Value<bool> isFavourite;
+  final Value<int> folderSizeBytes;
   const DocumentsCompanion({
     this.id = const Value.absent(),
     this.title = const Value.absent(),
@@ -457,6 +498,7 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
     this.imageCount = const Value.absent(),
     this.coverImagePath = const Value.absent(),
     this.isFavourite = const Value.absent(),
+    this.folderSizeBytes = const Value.absent(),
   });
   DocumentsCompanion.insert({
     this.id = const Value.absent(),
@@ -468,6 +510,7 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
     this.imageCount = const Value.absent(),
     this.coverImagePath = const Value.absent(),
     this.isFavourite = const Value.absent(),
+    this.folderSizeBytes = const Value.absent(),
   }) : title = Value(title),
        folderPath = Value(folderPath);
   static Insertable<Document> custom({
@@ -480,6 +523,7 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
     Expression<int>? imageCount,
     Expression<String>? coverImagePath,
     Expression<bool>? isFavourite,
+    Expression<int>? folderSizeBytes,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -491,6 +535,7 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
       if (imageCount != null) 'image_count': imageCount,
       if (coverImagePath != null) 'cover_image_path': coverImagePath,
       if (isFavourite != null) 'is_favourite': isFavourite,
+      if (folderSizeBytes != null) 'folder_size_bytes': folderSizeBytes,
     });
   }
 
@@ -504,6 +549,7 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
     Value<int>? imageCount,
     Value<String?>? coverImagePath,
     Value<bool>? isFavourite,
+    Value<int>? folderSizeBytes,
   }) {
     return DocumentsCompanion(
       id: id ?? this.id,
@@ -515,6 +561,7 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
       imageCount: imageCount ?? this.imageCount,
       coverImagePath: coverImagePath ?? this.coverImagePath,
       isFavourite: isFavourite ?? this.isFavourite,
+      folderSizeBytes: folderSizeBytes ?? this.folderSizeBytes,
     );
   }
 
@@ -548,6 +595,9 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
     if (isFavourite.present) {
       map['is_favourite'] = Variable<bool>(isFavourite.value);
     }
+    if (folderSizeBytes.present) {
+      map['folder_size_bytes'] = Variable<int>(folderSizeBytes.value);
+    }
     return map;
   }
 
@@ -562,7 +612,8 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
           ..write('pdfPath: $pdfPath, ')
           ..write('imageCount: $imageCount, ')
           ..write('coverImagePath: $coverImagePath, ')
-          ..write('isFavourite: $isFavourite')
+          ..write('isFavourite: $isFavourite, ')
+          ..write('folderSizeBytes: $folderSizeBytes')
           ..write(')'))
         .toString();
   }
@@ -591,6 +642,7 @@ typedef $$DocumentsTableCreateCompanionBuilder =
       Value<int> imageCount,
       Value<String?> coverImagePath,
       Value<bool> isFavourite,
+      Value<int> folderSizeBytes,
     });
 typedef $$DocumentsTableUpdateCompanionBuilder =
     DocumentsCompanion Function({
@@ -603,6 +655,7 @@ typedef $$DocumentsTableUpdateCompanionBuilder =
       Value<int> imageCount,
       Value<String?> coverImagePath,
       Value<bool> isFavourite,
+      Value<int> folderSizeBytes,
     });
 
 class $$DocumentsTableFilterComposer
@@ -656,6 +709,11 @@ class $$DocumentsTableFilterComposer
 
   ColumnFilters<bool> get isFavourite => $composableBuilder(
     column: $table.isFavourite,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get folderSizeBytes => $composableBuilder(
+    column: $table.folderSizeBytes,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -713,6 +771,11 @@ class $$DocumentsTableOrderingComposer
     column: $table.isFavourite,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get folderSizeBytes => $composableBuilder(
+    column: $table.folderSizeBytes,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$DocumentsTableAnnotationComposer
@@ -758,6 +821,11 @@ class $$DocumentsTableAnnotationComposer
     column: $table.isFavourite,
     builder: (column) => column,
   );
+
+  GeneratedColumn<int> get folderSizeBytes => $composableBuilder(
+    column: $table.folderSizeBytes,
+    builder: (column) => column,
+  );
 }
 
 class $$DocumentsTableTableManager
@@ -797,6 +865,7 @@ class $$DocumentsTableTableManager
                 Value<int> imageCount = const Value.absent(),
                 Value<String?> coverImagePath = const Value.absent(),
                 Value<bool> isFavourite = const Value.absent(),
+                Value<int> folderSizeBytes = const Value.absent(),
               }) => DocumentsCompanion(
                 id: id,
                 title: title,
@@ -807,6 +876,7 @@ class $$DocumentsTableTableManager
                 imageCount: imageCount,
                 coverImagePath: coverImagePath,
                 isFavourite: isFavourite,
+                folderSizeBytes: folderSizeBytes,
               ),
           createCompanionCallback:
               ({
@@ -819,6 +889,7 @@ class $$DocumentsTableTableManager
                 Value<int> imageCount = const Value.absent(),
                 Value<String?> coverImagePath = const Value.absent(),
                 Value<bool> isFavourite = const Value.absent(),
+                Value<int> folderSizeBytes = const Value.absent(),
               }) => DocumentsCompanion.insert(
                 id: id,
                 title: title,
@@ -829,6 +900,7 @@ class $$DocumentsTableTableManager
                 imageCount: imageCount,
                 coverImagePath: coverImagePath,
                 isFavourite: isFavourite,
+                folderSizeBytes: folderSizeBytes,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

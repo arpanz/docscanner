@@ -1,10 +1,12 @@
 // lib/features/manager/widgets/doc_card.dart
 import 'dart:io';
 import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
-import 'package:printing/printing.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:printing/printing.dart';
+
 import '../../../core/utils.dart';
 import '../../../database/app_database.dart';
 
@@ -48,7 +50,7 @@ class DocCard extends StatelessWidget {
                 offset: const Offset(0, 4),
               ),
               BoxShadow(
-                color: const Color(0xFF5C4BF5).withOpacity(0.04),
+                color: cs.primary.withOpacity(0.08),
                 blurRadius: 24,
                 offset: const Offset(0, 8),
               ),
@@ -56,159 +58,146 @@ class DocCard extends StatelessWidget {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(20),
-            child: SizedBox(
-              height: 280,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        document.coverImagePath != null
-                            ? (document.coverImagePath!
-                                    .toLowerCase()
-                                    .endsWith('.pdf')
-                                ? _PdfThumbnail(
-                                    path: document.coverImagePath!)
-                                : Image.file(
-                                    File(document.coverImagePath!),
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (ctx, err, _) =>
-                                        Container(
-                                      color: cs.surfaceContainerHigh,
-                                      child: Center(
-                                        child: Icon(
-                                          Icons.broken_image_outlined,
-                                          color: cs.onSurfaceVariant,
-                                        ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      document.coverImagePath != null
+                          ? (document.coverImagePath!.toLowerCase().endsWith('.pdf')
+                              ? _PdfThumbnail(path: document.coverImagePath!)
+                              : Image.file(
+                                  File(document.coverImagePath!),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (ctx, err, _) => Container(
+                                    color: cs.surfaceContainerHigh,
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.broken_image_outlined,
+                                        color: cs.onSurfaceVariant,
                                       ),
                                     ),
-                                  ))
-                            : Container(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: [
-                                      cs.primary.withOpacity(0.18),
-                                      cs.primary.withOpacity(0.06),
-                                    ],
                                   ),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    initials(document.title),
-                                    style: TextStyle(
-                                      fontSize: 40,
-                                      fontWeight: FontWeight.w800,
-                                      color:
-                                          cs.primary.withOpacity(0.35),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                        Positioned(
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                          height: 60,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  Colors.transparent,
-                                  Colors.black.withOpacity(0.45),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          top: 10,
-                          right: 10,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (document.isFavourite)
-                                Container(
-                                  margin:
-                                      const EdgeInsets.only(right: 6),
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        Colors.red.withOpacity(0.8),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.favorite_rounded,
-                                    size: 10,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 3,
-                                ),
-                                decoration: BoxDecoration(
-                                  color:
-                                      Colors.black.withOpacity(0.55),
-                                  borderRadius:
-                                      BorderRadius.circular(20),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      Icons.layers_rounded,
-                                      size: 11,
-                                      color: Colors.white70,
-                                    ),
-                                    const SizedBox(width: 3),
-                                    Text(
-                                      '${document.imageCount}',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
+                                ))
+                          : Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    cs.primary.withOpacity(0.18),
+                                    cs.secondary.withOpacity(0.12),
                                   ],
                                 ),
                               ),
-                            ],
+                              child: Center(
+                                child: Text(
+                                  initials(document.title),
+                                  style: TextStyle(
+                                    fontSize: 40,
+                                    fontWeight: FontWeight.w800,
+                                    color: cs.primary.withOpacity(0.35),
+                                  ),
+                                ),
+                              ),
+                            ),
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        height: 64,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.transparent,
+                                cs.scrim.withOpacity(0.4),
+                              ],
+                            ),
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding:
-                        const EdgeInsets.fromLTRB(14, 12, 14, 14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          document.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: tt.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            height: 1.2,
-                            letterSpacing: 0.1,
-                          ),
+                      ),
+                      Positioned(
+                        top: 10,
+                        right: 10,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (document.isFavourite)
+                              Container(
+                                margin: const EdgeInsets.only(right: 6),
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: cs.error.withOpacity(0.88),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.favorite_rounded,
+                                  size: 10,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: cs.scrim.withOpacity(0.62),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.layers_rounded,
+                                    size: 11,
+                                    color: Colors.white70,
+                                  ),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    '${document.imageCount}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 6),
-                        _DocCardFooter(document: document),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        document.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: tt.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          height: 1.2,
+                          letterSpacing: 0.1,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _DocCardFooter(document: document),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -217,83 +206,32 @@ class DocCard extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Footer
-// ---------------------------------------------------------------------------
-class _DocCardFooter extends StatefulWidget {
+class _DocCardFooter extends StatelessWidget {
   const _DocCardFooter({required this.document});
+
   final Document document;
-
-  @override
-  State<_DocCardFooter> createState() => _DocCardFooterState();
-}
-
-class _DocCardFooterState extends State<_DocCardFooter> {
-  late Future<int> _sizeFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    _sizeFuture = _computeFolderSize(widget.document.folderPath);
-  }
-
-  @override
-  void didUpdateWidget(_DocCardFooter old) {
-    super.didUpdateWidget(old);
-    if (old.document.folderPath != widget.document.folderPath ||
-        old.document.updatedAt != widget.document.updatedAt) {
-      _sizeFuture = _computeFolderSize(widget.document.folderPath);
-    }
-  }
-
-  Future<int> _computeFolderSize(String folderPath) async {
-    try {
-      final folder = Directory(folderPath);
-      if (!await folder.exists()) return 0;
-      int total = 0;
-      await for (final entity in folder.list()) {
-        if (entity is File) {
-          try {
-            total += await entity.length();
-          } catch (_) {}
-        }
-      }
-      return total;
-    } catch (_) {
-      return 0;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-    final count = widget.document.imageCount;
-    // Fix: "1 page" not "1 pages"
+    final count = document.imageCount;
     final pageLabel = '$count ${count == 1 ? 'page' : 'pages'}';
-    return FutureBuilder<int>(
-      future: _sizeFuture,
-      builder: (context, snapshot) {
-        final sizeStr =
-            snapshot.hasData ? formatBytes(snapshot.data!) : '…';
-        return Text(
-          '$pageLabel · $sizeStr',
-          style: tt.labelSmall?.copyWith(
-            color: cs.onSurface.withOpacity(0.6),
-            fontWeight: FontWeight.w500,
-            letterSpacing: 0.1,
-          ),
-        );
-      },
+    final sizeStr = formatBytes(document.folderSizeBytes);
+    return Text(
+      '$pageLabel · $sizeStr',
+      style: tt.labelSmall?.copyWith(
+        color: cs.onSurface.withOpacity(0.6),
+        fontWeight: FontWeight.w500,
+        letterSpacing: 0.1,
+      ),
     );
   }
 }
 
-// ---------------------------------------------------------------------------
-// PDF Thumbnail
-// ---------------------------------------------------------------------------
 class _PdfThumbnail extends StatefulWidget {
   const _PdfThumbnail({required this.path});
+
   final String path;
 
   @override
@@ -315,26 +253,20 @@ class _PdfThumbnailState extends State<_PdfThumbnail> {
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-              child: CircularProgressIndicator.adaptive());
+          return const Center(child: CircularProgressIndicator.adaptive());
         }
-        if (snapshot.hasError ||
-            !snapshot.hasData ||
-            snapshot.data == null) {
+        if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
           return Container(
             color: Theme.of(context).colorScheme.surfaceContainerHigh,
-            child: const Center(
-                child: Icon(Icons.picture_as_pdf_outlined)),
+            child: const Center(child: Icon(Icons.picture_as_pdf_outlined)),
           );
         }
         return Image.memory(
           snapshot.data!,
           fit: BoxFit.cover,
           errorBuilder: (ctx, err, _) => Container(
-            color:
-                Theme.of(context).colorScheme.surfaceContainerHigh,
-            child:
-                const Center(child: Icon(Icons.broken_image_outlined)),
+            color: Theme.of(context).colorScheme.surfaceContainerHigh,
+            child: const Center(child: Icon(Icons.broken_image_outlined)),
           ),
         );
       },
@@ -344,8 +276,7 @@ class _PdfThumbnailState extends State<_PdfThumbnail> {
   Future<Uint8List?> _renderPdf() async {
     try {
       final cacheDir = await getTemporaryDirectory();
-      final thumbDir =
-          Directory(p.join(cacheDir.path, 'pdf_thumbnails'));
+      final thumbDir = Directory(p.join(cacheDir.path, 'pdf_thumbnails'));
 
       await _cleanupOldThumbnails(thumbDir);
 
@@ -358,8 +289,7 @@ class _PdfThumbnailState extends State<_PdfThumbnail> {
       }
 
       final bytes = await File(widget.path).readAsBytes();
-      final rasters =
-          await Printing.raster(bytes, pages: [0], dpi: 72).toList();
+      final rasters = await Printing.raster(bytes, pages: [0], dpi: 72).toList();
       if (rasters.isNotEmpty) {
         final pngBytes = await rasters.first.toPng();
         if (!await thumbDir.exists()) {

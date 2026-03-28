@@ -110,13 +110,17 @@ class _PdfViewerScaffoldState extends State<_PdfViewerScaffold> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
-            if (context.canPop()) context.pop();
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go(AppRoutes.folderPath(widget.doc.id));
+            }
           },
         ),
         title: Text(widget.doc.title),
         actions: [
           IconButton(
-            icon: const Icon(Icons.ios_share),
+            icon: Icon(Platform.isIOS ? Icons.ios_share : Icons.share),
             onPressed: () async {
               await SharePlus.instance.share(
                 ShareParams(

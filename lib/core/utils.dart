@@ -70,7 +70,7 @@ String truncate(String text, int maxLength) {
 /// Returns initials (up to 2 chars) from a document title.
 String initials(String title) {
   final words = title.trim().split(RegExp(r'\s+'));
-  if (words.isEmpty) return '?';
+  if (words.isEmpty || words.first.isEmpty) return '?';
   if (words.length == 1) return words[0][0].toUpperCase();
   return (words[0][0] + words[1][0]).toUpperCase();
 }
@@ -91,6 +91,24 @@ void showSnackBar(BuildContext context, String message, {bool isError = false}) 
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
+}
+
+String userFacingError(
+  Object error, {
+  String fallback = 'Something went wrong. Please try again.',
+}) {
+  final text = error.toString().trim().toLowerCase();
+  if (text.isEmpty) return fallback;
+  if (text.contains('permission')) {
+    return 'Permission was denied. Please review app settings and try again.';
+  }
+  if (text.contains('network')) {
+    return 'A network problem interrupted the action. Please try again.';
+  }
+  if (text.contains('not found')) {
+    return 'The requested file could not be found.';
+  }
+  return fallback;
 }
 
 Future<bool> confirmDialog(

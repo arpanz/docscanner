@@ -1,34 +1,43 @@
-// lib/features/manager/manager_providers.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/app_prefs.dart';
 import '../../database/app_database.dart';
 
-// ---------------------------------------------------------------------------
-// Sort options
-// ---------------------------------------------------------------------------
 enum SortOption { dateDesc, dateAsc, nameAsc, nameDesc, pagesDesc }
 
 extension SortOptionLabel on SortOption {
   String get label => switch (this) {
-    SortOption.dateDesc => 'Newest first',
-    SortOption.dateAsc => 'Oldest first',
-    SortOption.nameAsc => 'Name A–Z',
-    SortOption.nameDesc => 'Name Z–A',
-    SortOption.pagesDesc => 'Most images',  // renamed from 'Most pages' — imageCount counts images, not PDF pages
-  };
+        SortOption.dateDesc => 'Newest first',
+        SortOption.dateAsc => 'Oldest first',
+        SortOption.nameAsc => 'Name A-Z',
+        SortOption.nameDesc => 'Name Z-A',
+        SortOption.pagesDesc => 'Most images',
+      };
 }
 
-// ---------------------------------------------------------------------------
-// Providers
-// ---------------------------------------------------------------------------
-final sortOptionProvider = StateProvider<SortOption>(
-  (_) => SortOption.dateDesc,
-);
+extension SortOptionStorage on SortOption {
+  static SortOption fromStoredValue(String value) {
+    return SortOption.values.firstWhere(
+      (option) => option.name == value,
+      orElse: () => SortOption.dateDesc,
+    );
+  }
+}
 
 final searchQueryProvider = StateProvider<String>((_) => '');
 
-final isGridViewProvider = StateProvider<bool>((ref) => true);
+final sortOptionProvider = Provider<SortOption>((ref) {
+  final stored = ref.watch(sortPreferenceProvider);
+  return SortOptionStorage.fromStoredValue(stored);
+});
 
-final showFavouritesOnlyProvider = StateProvider<bool>((ref) => false);
+final isGridViewProvider = Provider<bool>((ref) {
+  return ref.watch(gridPreferenceProvider);
+});
+
+final showFavouritesOnlyProvider = Provider<bool>((ref) {
+  return ref.watch(favouritesPreferenceProvider);
+});
 
 final allDocumentsProvider = StreamProvider<List<Document>>((ref) {
   final dao = ref.watch(documentsDaoProvider);
@@ -44,7 +53,7 @@ final filteredDocumentsProvider = Provider<AsyncValue<List<Document>>>((ref) {
 
   return allAsync.whenData((docs) {
     var filtered = query.isEmpty
-        ? docs
+        ? docs.toList()
         : docs.where((d) => d.title.toLowerCase().contains(query)).toList();
 
     filtered.sort(

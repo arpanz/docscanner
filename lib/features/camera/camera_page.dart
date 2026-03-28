@@ -1,8 +1,10 @@
 // lib/features/camera/camera_page.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_doc_scanner/flutter_doc_scanner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/constants.dart';
 import '../../core/utils.dart';
 import '../../core/router.dart';
 import '../../database/app_database.dart';
@@ -36,11 +38,18 @@ class _CameraPageState extends ConsumerState<CameraPage> {
     final hasCamera = await permissionService.requestCamera();
     if (!hasCamera) {
       if (!mounted) return;
-      showSnackBar(
-        context,
-        'Camera permission is required to scan documents',
-        isError: true,
-      );
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: const Text('Camera permission is required to scan documents'),
+            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(
+              label: 'Open Settings',
+              onPressed: () => permissionService.openSettings(),
+            ),
+          ),
+        );
       _safePop();
       return;
     }
@@ -51,7 +60,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
   Future<void> _scan() async {
     try {
       final ImageScanResult? result = await FlutterDocScanner()
-          .getScannedDocumentAsImages(page: 10);
+          .getScannedDocumentAsImages(page: AppConstants.maxPagesPerDocument);
 
       if (!mounted) return;
       if (result == null) {
@@ -79,17 +88,22 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       );
 
       if (mounted) {
+        HapticFeedback.lightImpact();
         // Replace camera route so back from folder returns to previous page.
         context.pushReplacement(AppRoutes.folderPath(docId));
       }
-    } on DocScanException catch (e) {
+    } on DocScanException {
       if (mounted) {
-        showSnackBar(context, 'Scan failed: ${e.message}', isError: true);
+        showSnackBar(context, 'Scanning was cancelled or could not finish.', isError: true);
         _safePop();
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Error: $e', isError: true);
+        showSnackBar(
+          context,
+          userFacingError(e, fallback: 'Something went wrong while scanning.'),
+          isError: true,
+        );
         _safePop();
       }
     }

@@ -2,15 +2,17 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 import 'package:pdf/pdf.dart';
 import 'package:share_plus/share_plus.dart';
-
+import '../../core/app_prefs.dart';
 import '../../database/app_database.dart';
 import '../camera/widgets/crop_enhance_sheet.dart';
 import '../../shared/services/document_service.dart';
+import '../../shared/services/ocr_service.dart';
 import '../../shared/services/pdf_service.dart';
 import '../../core/router.dart';
 import '../../core/utils.dart';
@@ -36,6 +38,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
   List<String> _cachedImagePaths = [];
   bool _imagesLoaded = false;
   bool _isEditing = false;
+  String? _editProgressText;
 
   @override
   void didChangeDependencies() {
@@ -76,7 +79,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
         File(doc.pdfPath!).existsSync()) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          context.replace(AppRoutes.viewerPath(widget.docId));
+          context.push(AppRoutes.viewerPath(widget.docId));
         }
       });
       return;
@@ -168,16 +171,23 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
       ),
     );
     if (confirmed != true) return;
+    HapticFeedback.mediumImpact();
 
     try {
+      final pageSize = PdfPageSizeOption.values.firstWhere(
+        (option) => option.name == ref.read(pageSizePreferenceProvider),
+        orElse: () => PdfPageSizeOption.a4,
+      );
       final pdfService = ref.read(pdfServiceProvider);
       final tempPdf = await pdfService.buildPdf(
         title: _document!.title,
         imagePaths: validPaths,
-        pageFormat: PdfPageFormat.a4,
+        pageFormat: pageSize == PdfPageSizeOption.letter
+            ? PdfPageFormat.letter
+            : PdfPageFormat.a4,
       );
 
-      final savedPath = await ref
+      await ref
           .read(documentServiceProvider)
           .savePdfToDocumentFolder(widget.docId, tempPdf);
 
@@ -196,20 +206,17 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
             ),
             action: SnackBarAction(
               label: 'View',
-              onPressed: () async {
-                await SharePlus.instance.share(
-                  ShareParams(
-                    files: [XFile(savedPath, mimeType: 'application/pdf')],
-                    subject: _document?.title,
-                  ),
-                );
-              },
+              onPressed: _viewPdf,
             ),
           ),
         );
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Failed to create PDF: $e', isError: true);
+        showSnackBar(
+          context,
+          userFacingError(e, fallback: 'Could not create that PDF.'),
+          isError: true,
+        );
       }
     }
   }
@@ -255,7 +262,9 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
             child: const Text('Delete'),
           ),
         ],
@@ -285,7 +294,11 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Failed to delete: $e', isError: true);
+        showSnackBar(
+          context,
+          userFacingError(e, fallback: 'Could not delete those pages.'),
+          isError: true,
+        );
       }
     }
   }
@@ -329,7 +342,11 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Failed to share: $e', isError: true);
+        showSnackBar(
+          context,
+          userFacingError(e, fallback: 'Could not share those pages.'),
+          isError: true,
+        );
       }
     }
   }
@@ -363,20 +380,27 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
   }) async {
     if (_document == null || paths.isEmpty || _isEditing) return;
 
-    final mode = await _pickFilterMode(
-      title:
-          pickerTitle ??
-          (applyToAll ? 'Edit all pages' : 'Edit selected pages'),
+    final options = await _pickEditOptions(
+      title: pickerTitle ?? (applyToAll ? 'Edit all pages' : 'Edit selected pages'),
+      previewImagePath: paths.first,
     );
-    if (mode == null) return;
+    if (options == null) return;
 
-    setState(() => _isEditing = true);
+    setState(() {
+      _isEditing = true;
+      _editProgressText = 'Applying edits... (0/${paths.length})';
+    });
     var edited = 0;
     var failed = 0;
 
     try {
-      for (final path in paths) {
-        final ok = await _applyFilterToImage(path, mode);
+      for (var i = 0; i < paths.length; i++) {
+        if (mounted) {
+          setState(() {
+            _editProgressText = 'Applying edits... (${i + 1}/${paths.length})';
+          });
+        }
+        final ok = await _applyEditsToImage(paths[i], options);
         if (ok) {
           edited++;
         } else {
@@ -393,13 +417,16 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
         final scope =
             successScope ?? (applyToAll ? 'all pages' : 'selected pages');
         final failNote = failed > 0 ? ' ($failed failed)' : '';
-        showSnackBar(context, 'Edited $scope with ${mode.label}$failNote');
+        showSnackBar(context, 'Updated $scope$failNote');
       } else {
         showSnackBar(context, 'No pages could be edited', isError: true);
       }
     } finally {
       if (mounted) {
-        setState(() => _isEditing = false);
+        setState(() {
+          _isEditing = false;
+          _editProgressText = null;
+        });
       }
     }
   }
@@ -443,7 +470,10 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
               },
             ),
             ListTile(
-              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              leading: Icon(
+                Icons.delete_outline,
+                color: Theme.of(ctx).colorScheme.error,
+              ),
               title: const Text('Delete this image'),
               onTap: () {
                 Navigator.pop(ctx);
@@ -457,44 +487,42 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
     );
   }
 
-  Future<FilterMode?> _pickFilterMode({required String title}) async {
+  Future<ImageEditOptions?> _pickEditOptions({
+    required String title,
+    required String previewImagePath,
+  }) async {
     if (!mounted) return null;
-    return showModalBottomSheet<FilterMode>(
+    final confirmed = await showDialog<bool>(
       context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  title,
-                  style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-            ...FilterMode.values
-                .where((mode) => mode != FilterMode.original)
-                .map(
-                  (mode) => ListTile(
-                    leading: Icon(mode.icon),
-                    title: Text(mode.label),
-                    onTap: () => Navigator.pop(ctx, mode),
-                  ),
-                ),
-            const SizedBox(height: 8),
-          ],
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: const Text(
+          'Edits overwrite the current page. We will keep a one-time backup so you can restore the original later.',
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return null;
+
+    return showModalBottomSheet<ImageEditOptions>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => ImageEditSheet(
+        imagePath: previewImagePath,
       ),
     );
   }
 
-  Future<bool> _applyFilterToImage(String imagePath, FilterMode mode) async {
+  Future<bool> _applyEditsToImage(String imagePath, ImageEditOptions options) async {
     if (!File(imagePath).existsSync()) return false;
 
     final tempPath = p.join(
@@ -503,12 +531,13 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
     );
 
     try {
+      await ref.read(documentServiceProvider).backupOriginalImage(imagePath);
       final processedPath = await compute(
-        applyFilter,
-        FilterArgs(
+        applyImageEdits,
+        ImageEditArgs(
           inputPath: imagePath,
           outputPath: tempPath,
-          filterName: mode.name,
+          options: options,
         ),
       );
 
@@ -527,6 +556,77 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
     }
   }
 
+  Future<void> _restoreOriginals() async {
+    if (_document == null) return;
+    final restored = await ref
+        .read(documentServiceProvider)
+        .restoreBackups(widget.docId, _document!.folderPath);
+    await _loadDocument();
+    if (!mounted) return;
+    showSnackBar(
+      context,
+      restored == 0
+          ? 'No saved originals were found.'
+          : 'Restored $restored original page${restored == 1 ? '' : 's'}',
+    );
+  }
+
+  Future<void> _extractText() async {
+    if (_document == null) return;
+    final sourcePaths = _cachedImagePaths.isNotEmpty
+        ? _cachedImagePaths
+        : [
+            if (_document?.coverImagePath != null) _document!.coverImagePath!,
+          ];
+    if (sourcePaths.isEmpty) {
+      showSnackBar(context, 'No pages available for text extraction.', isError: true);
+      return;
+    }
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2.4),
+            ),
+            SizedBox(width: 12),
+            Expanded(child: Text('Extracting text...')),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final text = await ref.read(ocrServiceProvider).extractTextFromPaths(sourcePaths);
+      if (!mounted) return;
+      Navigator.pop(context);
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (ctx) => _OcrSheet(text: text),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      showSnackBar(
+        context,
+        userFacingError(e, fallback: 'Could not extract text from these pages.'),
+        isError: true,
+      );
+    }
+  }
+
+  void _viewPdf() {
+    if (_document?.pdfPath == null) return;
+    context.push(AppRoutes.viewerPath(widget.docId));
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -540,10 +640,11 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
       canPop: !_reorderMode && !_selectMode,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) {
-          if (_reorderMode)
+          if (_reorderMode) {
             _toggleReorderMode();
-          else if (_selectMode)
+          } else if (_selectMode) {
             _toggleSelectMode();
+          }
         }
       },
       child: Scaffold(
@@ -596,7 +697,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                   _document?.isFavourite == true
                       ? Icons.favorite_rounded
                       : Icons.favorite_border_rounded,
-                  color: _document?.isFavourite == true ? Colors.red : null,
+                  color: _document?.isFavourite == true ? cs.error : null,
                 ),
                 tooltip: _document?.isFavourite == true
                     ? 'Remove from favourites'
@@ -611,6 +712,13 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                               !(_document!.isFavourite),
                             );
                         await _loadDocument();
+                        if (!context.mounted) return;
+                        showSnackBar(
+                          context,
+                          _document?.isFavourite == true
+                              ? 'Added to favourites'
+                              : 'Removed from favourites',
+                        );
                       },
               ),
               if (hasImages)
@@ -634,6 +742,20 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                       value: _MenuAction.reorder,
                       child: Text('Reorder pages'),
                     ),
+                  if (hasImages)
+                    const PopupMenuItem(
+                      value: _MenuAction.extractText,
+                      child: Text('Extract text'),
+                    ),
+                  if (_document?.pdfPath != null)
+                    const PopupMenuItem(
+                      value: _MenuAction.viewPdf,
+                      child: Text('View PDF'),
+                    ),
+                  const PopupMenuItem(
+                    value: _MenuAction.restoreOriginals,
+                    child: Text('Restore originals'),
+                  ),
                   const PopupMenuItem(
                     value: _MenuAction.rename,
                     child: Text('Rename'),
@@ -665,6 +787,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                 buildDefaultDragHandles: false,
                 itemCount: imagePaths.length,
                 onReorder: (oldIndex, newIndex) async {
+                  HapticFeedback.mediumImpact();
                   if (newIndex > oldIndex) newIndex--;
                   final reordered = List<String>.from(imagePaths);
                   final item = reordered.removeAt(oldIndex);
@@ -715,18 +838,18 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                 },
               ),
         persistentFooterButtons: _isEditing
-            ? const [
+            ? [
                 Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Row(
                     children: [
-                      SizedBox(
+                      const SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2.4),
                       ),
-                      SizedBox(width: 10),
-                      Text('Applying edits...'),
+                      const SizedBox(width: 10),
+                      Text(_editProgressText ?? 'Applying edits...'),
                     ],
                   ),
                 ),
@@ -738,7 +861,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                   color: cs.surface,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: cs.shadow.withOpacity(0.08),
                       blurRadius: 8,
                       offset: const Offset(0, -2),
                     ),
@@ -750,25 +873,27 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                       horizontal: 16,
                       vertical: 8,
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(children: [
                         _ActionChip(
                           icon: Icons.auto_fix_high_rounded,
                           label: _selectMode ? 'Edit Selected' : 'Edit All',
-                          color: Colors.teal,
+                          color: cs.tertiary,
                           onPressed: _isEditing
                               ? null
                               : (_selectMode ? _editSelected : _editAllPages),
                         ),
+                        const SizedBox(width: 10),
                         _ActionChip(
                           icon: Icons.picture_as_pdf,
                           label: _selectMode ? 'PDF Selected' : 'PDF All',
-                          color: Colors.deepOrange,
+                          color: cs.secondary,
                           onPressed: _isEditing
                               ? null
                               : (_selectMode ? _createPdf : _createPdfAll),
                         ),
+                        const SizedBox(width: 10),
                         _ActionChip(
                           icon: Icons.share,
                           label: _selectMode ? 'Share Selected' : 'Share All',
@@ -777,15 +902,34 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                               ? null
                               : (_selectMode ? _shareSelected : _shareAll),
                         ),
+                        if (_document?.pdfPath != null) ...[
+                          const SizedBox(width: 10),
+                          _ActionChip(
+                            icon: Icons.visibility_outlined,
+                            label: 'View PDF',
+                            color: cs.primary,
+                            onPressed: _viewPdf,
+                          ),
+                        ],
+                        const SizedBox(width: 10),
                         _ActionChip(
-                          icon: Icons.delete_outline,
-                          label: _selectMode ? 'Delete Selected' : 'Delete All',
-                          color: Colors.red,
+                          icon: Icons.text_snippet_outlined,
+                          label: 'OCR',
+                          color: cs.primary,
+                          onPressed: _extractText,
+                        ),
+                        const SizedBox(width: 10),
+                        OutlinedButton.icon(
                           onPressed: _isEditing
                               ? null
                               : (_selectMode ? _deleteSelected : _deleteAll),
+                          icon: Icon(Icons.delete_outline, color: cs.error),
+                          label: Text(
+                            _selectMode ? 'Delete Selected' : 'Delete All',
+                            style: TextStyle(color: cs.error),
+                          ),
                         ),
-                      ],
+                      ]),
                     ),
                   ),
                 ),
@@ -832,10 +976,22 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
     switch (action) {
       case _MenuAction.reorder:
         _toggleReorderMode();
+        return;
+      case _MenuAction.extractText:
+        await _extractText();
+        return;
+      case _MenuAction.viewPdf:
+        _viewPdf();
+        return;
+      case _MenuAction.restoreOriginals:
+        await _restoreOriginals();
+        return;
       case _MenuAction.rename:
         await _renameDocument();
+        return;
       case _MenuAction.delete:
         await _deleteDocument();
+        return;
     }
   }
 
@@ -871,7 +1027,13 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
       await _loadDocument();
       if (mounted) showSnackBar(context, 'Document renamed');
     } catch (e) {
-      if (mounted) showSnackBar(context, 'Failed to rename: $e', isError: true);
+      if (mounted) {
+        showSnackBar(
+          context,
+          userFacingError(e, fallback: 'Could not rename this document.'),
+          isError: true,
+        );
+      }
     }
   }
 
@@ -890,7 +1052,9 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
             child: const Text('Delete'),
           ),
         ],
@@ -898,6 +1062,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
     );
 
     if (confirmed != true) return;
+    HapticFeedback.mediumImpact();
     try {
       await ref.read(documentServiceProvider).deleteDocument(widget.docId);
       if (mounted) {
@@ -905,7 +1070,13 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
         showSnackBar(context, 'Document deleted');
       }
     } catch (e) {
-      if (mounted) showSnackBar(context, 'Failed to delete: $e', isError: true);
+      if (mounted) {
+        showSnackBar(
+          context,
+          userFacingError(e, fallback: 'Could not delete this document.'),
+          isError: true,
+        );
+      }
     }
   }
 }
@@ -944,7 +1115,7 @@ class _ReorderTile extends StatelessWidget {
               child: Image.file(
                 File(imagePath),
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Icon(
+                errorBuilder: (context, error, stackTrace) => Icon(
                   Icons.broken_image_outlined,
                   color: cs.onSurfaceVariant,
                 ),
@@ -1050,7 +1221,7 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
               borderRadius: BorderRadius.circular(8),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.18),
+                  color: cs.shadow.withOpacity(0.18),
                   blurRadius: 24,
                   offset: const Offset(0, 8),
                 ),
@@ -1093,12 +1264,16 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
   }
 
   Future<void> _editCurrentPage() async {
-    final mode = await _pickFilterMode(context);
-    if (mode == null) return;
+    final options = await showModalBottomSheet<ImageEditOptions>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => ImageEditSheet(imagePath: widget.imagePaths[_currentIndex]),
+    );
+    if (options == null) return;
 
     setState(() => _isEditing = true);
     final imagePath = widget.imagePaths[_currentIndex];
-    final edited = await _applyFilterToImage(imagePath, mode);
+    final edited = await _applyEditsToImage(imagePath, options);
 
     if (!mounted) return;
     setState(() {
@@ -1109,47 +1284,13 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          edited ? 'Page edited with ${mode.label}' : 'Failed to edit page',
+          edited ? 'Page updated' : 'Failed to edit page',
         ),
       ),
     );
   }
 
-  Future<FilterMode?> _pickFilterMode(BuildContext context) {
-    return showModalBottomSheet<FilterMode>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Edit this page',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                ),
-              ),
-            ),
-            ...FilterMode.values
-                .where((mode) => mode != FilterMode.original)
-                .map(
-                  (mode) => ListTile(
-                    leading: Icon(mode.icon),
-                    title: Text(mode.label),
-                    onTap: () => Navigator.pop(ctx, mode),
-                  ),
-                ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<bool> _applyFilterToImage(String imagePath, FilterMode mode) async {
+  Future<bool> _applyEditsToImage(String imagePath, ImageEditOptions options) async {
     if (!File(imagePath).existsSync()) return false;
 
     final tempPath = p.join(
@@ -1158,12 +1299,16 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
     );
 
     try {
+      final backup = File('$imagePath.bak');
+      if (!await backup.exists()) {
+        await File(imagePath).copy(backup.path);
+      }
       final processedPath = await compute(
-        applyFilter,
-        FilterArgs(
+        applyImageEdits,
+        ImageEditArgs(
           inputPath: imagePath,
           outputPath: tempPath,
-          filterName: mode.name,
+          options: options,
         ),
       );
 
@@ -1180,6 +1325,65 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
       }
       return false;
     }
+  }
+}
+
+class _OcrSheet extends StatelessWidget {
+  const _OcrSheet({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = text.trim().isEmpty ? 'No text was detected on these pages.' : text.trim();
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Extracted Text',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            Flexible(
+              child: SingleChildScrollView(
+                child: SelectableText(content),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                OutlinedButton.icon(
+                  onPressed: content.startsWith('No text')
+                      ? null
+                      : () {
+                          Clipboard.setData(ClipboardData(text: content));
+                          showSnackBar(context, 'Text copied');
+                        },
+                  icon: const Icon(Icons.copy_all_outlined),
+                  label: const Text('Copy'),
+                ),
+                const SizedBox(width: 10),
+                FilledButton.icon(
+                  onPressed: content.startsWith('No text')
+                      ? null
+                      : () async {
+                          await SharePlus.instance.share(ShareParams(text: content));
+                        },
+                  icon: const Icon(Icons.share),
+                  label: const Text('Share text'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -1227,13 +1431,18 @@ class _ImageTile extends StatelessWidget {
               right: 4,
               child: Container(
                 decoration: BoxDecoration(
-                  color: isSelected ? Colors.blue : Colors.black54,
+                  color: isSelected
+                      ? cs.primary
+                      : cs.scrim.withOpacity(0.55),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  isSelected ? Icons.check_circle : Icons.circle_outlined,
-                  color: Colors.white,
-                  size: 24,
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Icon(
+                    isSelected ? Icons.check_circle : Icons.circle_outlined,
+                    color: Colors.white,
+                    size: 20,
+                  ),
                 ),
               ),
             ),
@@ -1261,13 +1470,16 @@ class _ActionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final foreground = onPressed == null ? cs.outline : color;
     return InkWell(
       onTap: onPressed,
       borderRadius: BorderRadius.circular(20),
       child: Container(
+        constraints: const BoxConstraints(minHeight: 48),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: (onPressed == null ? Colors.grey : color).withOpacity(0.1),
+          color: foreground.withOpacity(0.1),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
@@ -1275,14 +1487,14 @@ class _ActionChip extends StatelessWidget {
           children: [
             Icon(
               icon,
-              color: onPressed == null ? Colors.grey : color,
+              color: foreground,
               size: 20,
             ),
             const SizedBox(width: 8),
             Text(
               label,
               style: TextStyle(
-                color: onPressed == null ? Colors.grey : color,
+                color: foreground,
                 fontWeight: FontWeight.w600,
                 fontSize: 14,
               ),
@@ -1294,4 +1506,11 @@ class _ActionChip extends StatelessWidget {
   }
 }
 
-enum _MenuAction { reorder, rename, delete }
+enum _MenuAction {
+  reorder,
+  extractText,
+  viewPdf,
+  restoreOriginals,
+  rename,
+  delete,
+}

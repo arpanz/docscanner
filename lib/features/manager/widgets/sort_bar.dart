@@ -1,6 +1,8 @@
 // lib/features/manager/widgets/sort_bar.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/app_prefs.dart';
 import '../manager_providers.dart';
 
 class SortBar extends ConsumerWidget {
@@ -23,7 +25,7 @@ class SortBar extends ConsumerWidget {
             child: ChoiceChip(
               label: Text(opt.label, style: const TextStyle(fontSize: 12)),
               selected: selected,
-              showCheckmark: false,
+              showCheckmark: true,
               backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
               selectedColor: theme.colorScheme.primaryContainer,
               side: BorderSide(
@@ -31,8 +33,9 @@ class SortBar extends ConsumerWidget {
                 width: 1,
               ),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              onSelected: (_) =>
-                  ref.read(sortOptionProvider.notifier).state = opt,
+              onSelected: (_) => ref
+                  .read(sortPreferenceProvider.notifier)
+                  .setValue(opt.name),
               labelStyle: theme.textTheme.labelSmall?.copyWith(
                 color: selected
                     ? theme.colorScheme.onPrimaryContainer

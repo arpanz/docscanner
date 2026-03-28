@@ -21,7 +21,7 @@ class AppDatabase extends _$AppDatabase {
       : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   /// Migration history:
   ///   v1 → initial schema (id, title, createdAt, updatedAt, folderPath)
@@ -43,6 +43,9 @@ class AppDatabase extends _$AppDatabase {
           // v2 → v3: add isFavourite
           if (from <= 2) {
             await m.addColumn(documents, documents.isFavourite);
+          }
+          if (from <= 3) {
+            await m.addColumn(documents, documents.folderSizeBytes);
           }
         },
         beforeOpen: (details) async {

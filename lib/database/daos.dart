@@ -53,6 +53,7 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
         DocumentsCompanion(
           imageCount: const Value(0),
           coverImagePath: const Value(null),
+          folderSizeBytes: const Value(0),
           updatedAt: Value(DateTime.now()),
         ),
       );
@@ -64,6 +65,12 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
         .where((e) => e is File)
         .cast<File>()
         .toList();
+    var totalBytes = 0;
+    for (final file in allFiles) {
+      try {
+        totalBytes += await file.length();
+      } catch (_) {}
+    }
 
     // User pages: images that are NOT internal files (prefixed with ~)
     final userImages = allFiles
@@ -92,6 +99,7 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
         DocumentsCompanion(
           imageCount: Value(hasPdf ? 1 : 0),
           coverImagePath: const Value(null),
+          folderSizeBytes: Value(totalBytes),
           updatedAt: Value(DateTime.now()),
         ),
       );
@@ -106,8 +114,11 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
       DocumentsCompanion(
         imageCount: Value(userImages.isEmpty ? 1 : userImages.length),
         coverImagePath: Value(coverPath),
+        folderSizeBytes: Value(totalBytes),
         updatedAt: Value(DateTime.now()),
       ),
     );
   }
+
+  Future<List<Document>> getAllDocuments() => select(documents).get();
 }

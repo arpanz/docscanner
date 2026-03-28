@@ -128,8 +128,9 @@ class DocumentService {
     if (doc == null) return;
     try {
       final folder = Directory(doc.folderPath);
-      if (await folder.exists())
+      if (await folder.exists()) {
         await folder.delete(recursive: true);
+      }
     } catch (_) {}
     await _docsDao.deleteDocument(docId);
   }
@@ -194,6 +195,13 @@ class DocumentService {
 
   Future<void> toggleFavourite(int docId, bool value) async {
     await _docsDao.toggleFavourite(docId, value);
+  }
+
+  Future<void> refreshAllDocumentsMeta() async {
+    final docs = await _docsDao.getAllDocuments();
+    for (final doc in docs) {
+      await _docsDao.refreshDocumentMeta(doc.id, doc.folderPath);
+    }
   }
 
   /// Returns user-page images only — excludes the cover file (~cover.png)
@@ -272,6 +280,7 @@ class DocumentService {
     }
 
     // Phase 2: rename to final zero-padded names, with rollback on error
+    final successfullyRenamed = <MapEntry<String, String>>[];
     try {
       for (var i = 0; i < tempPaths.length; i++) {
         final file = File(tempPaths[i]);
@@ -281,11 +290,19 @@ class DocumentService {
               doc.folderPath,
               '${i.toString().padLeft(4, '0')}$ext');
           await file.rename(finalPath);
+          successfullyRenamed.add(MapEntry(finalPath, originalPaths[i]));
         }
       }
     } catch (e) {
       debugPrint('reorderImages phase-2 failed, attempting rollback: $e');
-      // Rollback: rename temp files back to original names
+      for (final renamed in successfullyRenamed.reversed) {
+        try {
+          final finalFile = File(renamed.key);
+          if (await finalFile.exists()) {
+            await finalFile.rename(renamed.value);
+          }
+        } catch (_) {}
+      }
       for (var i = 0; i < tempPaths.length; i++) {
         try {
           final tempFile = File(tempPaths[i]);
@@ -364,6 +381,45 @@ class DocumentService {
       .replaceAll(RegExp(r'[^\w\s-]'), '')
       .trim()
       .replaceAll(' ', '_');
+
+  Future<void> backupOriginalImage(String imagePath) async {
+    final file = File(imagePath);
+    final backup = File('$imagePath.bak');
+    if (!await file.exists() || await backup.exists()) return;
+    await file.copy(backup.path);
+  }
+
+  Future<bool> hasAnyBackups(String folderPath) async {
+    final folder = Directory(folderPath);
+    if (!await folder.exists()) return false;
+    await for (final entity in folder.list()) {
+      if (entity is File && entity.path.toLowerCase().endsWith('.bak')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Future<int> restoreBackups(int docId, String folderPath) async {
+    final folder = Directory(folderPath);
+    if (!await folder.exists()) return 0;
+
+    var restored = 0;
+    await for (final entity in folder.list()) {
+      if (entity is! File || !entity.path.toLowerCase().endsWith('.bak')) {
+        continue;
+      }
+      final originalPath = entity.path.substring(0, entity.path.length - 4);
+      try {
+        await entity.copy(originalPath);
+        await entity.delete();
+        restored++;
+      } catch (_) {}
+    }
+
+    await _docsDao.refreshDocumentMeta(docId, folderPath);
+    return restored;
+  }
 }
 
 final documentServiceProvider =

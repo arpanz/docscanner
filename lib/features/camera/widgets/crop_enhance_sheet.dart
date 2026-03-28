@@ -1,181 +1,8 @@
-// lib/features/camera/widgets/crop_enhance_sheet.dart
 import 'dart:io';
-import 'package:flutter/foundation.dart';
+
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image/image.dart' as img;
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
-/// A bottom sheet for reviewing a captured page with basic enhance options.
-/// Returns an updated image path when the user confirms, or null on cancel.
-class CropEnhanceSheet extends ConsumerStatefulWidget {
-  const CropEnhanceSheet({super.key, required this.imagePath});
-  final String imagePath;
-
-  @override
-  ConsumerState<CropEnhanceSheet> createState() => _CropEnhanceSheetState();
-}
-
-class _CropEnhanceSheetState extends ConsumerState<CropEnhanceSheet> {
-  FilterMode _filter = FilterMode.original;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.85,
-      maxChildSize: 0.95,
-      minChildSize: 0.5,
-      builder: (ctx, scrollCtrl) => Column(
-        children: [
-          // Handle
-          const _SheetHandle(),
-
-          // Header
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
-                ),
-                Text(
-                  'Enhance',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                FilledButton(
-                  onPressed: () async {
-                    if (_filter == FilterMode.original) {
-                      Navigator.pop(context, widget.imagePath);
-                      return;
-                    }
-
-                    try {
-                      final tempDir = await getTemporaryDirectory();
-                      final outPath = p.join(
-                        tempDir.path,
-                        'scan_${DateTime.now().microsecondsSinceEpoch}_${_filter.name}.jpg',
-                      );
-
-                      final processedPath = await compute(
-                        applyFilter,
-                        FilterArgs(
-                          inputPath: widget.imagePath,
-                          outputPath: outPath,
-                          filterName: _filter.name,
-                        ),
-                      );
-
-                      if (!context.mounted) return;
-                      Navigator.pop(context, processedPath);
-                    } catch (e) {
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Enhance failed: $e')),
-                      );
-                    }
-                  },
-                  child: const Text('Use'),
-                ),
-              ],
-            ),
-          ),
-
-          // Image preview
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: _FilteredImage(path: widget.imagePath, filter: _filter),
-              ),
-            ),
-          ),
-
-          // Filter selector
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 72,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              children: FilterMode.values.map((mode) {
-                final selected = _filter == mode;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: GestureDetector(
-                    onTap: () => setState(() => _filter = mode),
-                    child: Column(
-                      children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: selected
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.outlineVariant,
-                              width: selected ? 2 : 1,
-                            ),
-                            color: theme.colorScheme.surfaceContainerHighest,
-                          ),
-                          child: Icon(
-                            mode.icon,
-                            color: selected
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          mode.label,
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: selected
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-          const SizedBox(height: 24),
-        ],
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Filtered image (client-side color matrix approximation)
-// ---------------------------------------------------------------------------
-class _FilteredImage extends StatelessWidget {
-  const _FilteredImage({required this.path, required this.filter});
-  final String path;
-  final FilterMode filter;
-
-  @override
-  Widget build(BuildContext context) {
-    return ColorFiltered(
-      colorFilter: ColorFilter.matrix(filter.matrix),
-      child: Image.file(File(path), fit: BoxFit.contain),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Filter modes
-// ---------------------------------------------------------------------------
 enum FilterMode {
   original,
   grayscale,
@@ -183,175 +10,406 @@ enum FilterMode {
   blackwhite;
 
   String get label => switch (this) {
-    original => 'Original',
-    grayscale => 'Gray',
-    enhance => 'Enhance',
-    blackwhite => 'B&W',
-  };
+        original => 'Original',
+        grayscale => 'Gray',
+        enhance => 'Enhance',
+        blackwhite => 'B&W',
+      };
 
   IconData get icon => switch (this) {
-    original => Icons.image_outlined,
-    grayscale => Icons.gradient,
-    enhance => Icons.auto_fix_high,
-    blackwhite => Icons.contrast,
-  };
-
-  List<double> get matrix => switch (this) {
-    original => [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
-    grayscale => [
-      0.2126,
-      0.7152,
-      0.0722,
-      0,
-      0,
-      0.2126,
-      0.7152,
-      0.0722,
-      0,
-      0,
-      0.2126,
-      0.7152,
-      0.0722,
-      0,
-      0,
-      0,
-      0,
-      0,
-      1,
-      0,
-    ],
-    enhance => [
-      1.2,
-      0,
-      0,
-      0,
-      -20,
-      0,
-      1.2,
-      0,
-      0,
-      -20,
-      0,
-      0,
-      1.2,
-      0,
-      -20,
-      0,
-      0,
-      0,
-      1,
-      0,
-    ],
-    blackwhite => [
-      0.6392,
-      0.6392,
-      0.6392,
-      0,
-      -60,
-      0.6392,
-      0.6392,
-      0.6392,
-      0,
-      -60,
-      0.6392,
-      0.6392,
-      0.6392,
-      0,
-      -60,
-      0,
-      0,
-      0,
-      1,
-      0,
-    ],
-  };
+        original => Icons.image_outlined,
+        grayscale => Icons.gradient,
+        enhance => Icons.auto_fix_high,
+        blackwhite => Icons.contrast,
+      };
 }
 
-class FilterArgs {
-  const FilterArgs({
+class ImageEditOptions {
+  const ImageEditOptions({
+    this.filter = FilterMode.original,
+    this.brightness = 0,
+    this.contrast = 1,
+    this.rotationTurns = 0,
+  });
+
+  final FilterMode filter;
+  final double brightness;
+  final double contrast;
+  final int rotationTurns;
+
+  ImageEditOptions copyWith({
+    FilterMode? filter,
+    double? brightness,
+    double? contrast,
+    int? rotationTurns,
+  }) {
+    return ImageEditOptions(
+      filter: filter ?? this.filter,
+      brightness: brightness ?? this.brightness,
+      contrast: contrast ?? this.contrast,
+      rotationTurns: rotationTurns ?? this.rotationTurns,
+    );
+  }
+}
+
+class ImageEditArgs {
+  const ImageEditArgs({
     required this.inputPath,
     required this.outputPath,
-    required this.filterName,
+    required this.options,
   });
 
   final String inputPath;
   final String outputPath;
-  final String filterName;
+  final ImageEditOptions options;
 }
 
-String applyFilter(FilterArgs args) {
+String applyImageEdits(ImageEditArgs args) {
   final bytes = File(args.inputPath).readAsBytesSync();
-  final image = img.decodeImage(bytes);
+  var image = img.decodeImage(bytes);
   if (image == null) {
     throw Exception('Failed to decode image');
   }
 
-  final mode = FilterMode.values.firstWhere(
-    (m) => m.name == args.filterName,
-    orElse: () => FilterMode.original,
-  );
-
-  switch (mode) {
+  switch (args.options.filter) {
     case FilterMode.original:
       break;
     case FilterMode.grayscale:
-      _applyGrayscale(image);
+      image = img.grayscale(image);
+      break;
     case FilterMode.enhance:
-      _applyEnhance(image);
+      image = img.adjustColor(image, contrast: 1.18, saturation: 1.05, brightness: 0.02);
+      break;
     case FilterMode.blackwhite:
-      _applyBlackWhite(image);
+      image = img.grayscale(image);
+      image = img.contrast(image, contrast: 160);
+      image = _threshold(image, 150);
+      break;
+  }
+
+  if (args.options.brightness.abs() > 0.001 || (args.options.contrast - 1).abs() > 0.001) {
+    image = img.adjustColor(
+      image,
+      brightness: args.options.brightness,
+      contrast: args.options.contrast,
+    );
+  }
+
+  final turns = args.options.rotationTurns % 4;
+  if (turns == 1) {
+    image = img.copyRotate(image, angle: 90);
+  } else if (turns == 2) {
+    image = img.copyRotate(image, angle: 180);
+  } else if (turns == 3) {
+    image = img.copyRotate(image, angle: 270);
   }
 
   File(args.outputPath).writeAsBytesSync(img.encodeJpg(image, quality: 95));
   return args.outputPath;
 }
 
-void _applyGrayscale(img.Image image) {
+img.Image _threshold(img.Image image, int threshold) {
   for (final pixel in image) {
-    final gray = (0.2126 * pixel.r + 0.7152 * pixel.g + 0.0722 * pixel.b)
-        .round();
+    final value = pixel.r >= threshold ? 255 : 0;
     pixel
-      ..r = gray
-      ..g = gray
-      ..b = gray;
+      ..r = value
+      ..g = value
+      ..b = value;
+  }
+  return image;
+}
+
+class ImageEditSheet extends StatefulWidget {
+  const ImageEditSheet({
+    super.key,
+    required this.imagePath,
+    this.initial = const ImageEditOptions(),
+  });
+
+  final String imagePath;
+  final ImageEditOptions initial;
+
+  @override
+  State<ImageEditSheet> createState() => _ImageEditSheetState();
+}
+
+class _ImageEditSheetState extends State<ImageEditSheet> {
+  late ImageEditOptions _options;
+
+  @override
+  void initState() {
+    super.initState();
+    _options = widget.initial;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.92,
+      maxChildSize: 0.96,
+      minChildSize: 0.7,
+      builder: (ctx, scrollCtrl) => Column(
+        children: [
+          const _SheetHandle(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                Expanded(
+                  child: Text(
+                    'Edit page',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, _options),
+                  child: const Text('Apply'),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              controller: scrollCtrl,
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    height: 340,
+                    color: cs.surfaceContainerHighest,
+                    child: _PreviewImage(
+                      path: widget.imagePath,
+                      options: _options,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'Filter',
+                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 80,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: FilterMode.values.map((mode) {
+                      final selected = _options.filter == mode;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: InkWell(
+                          onTap: () => setState(() {
+                            _options = _options.copyWith(filter: mode);
+                          }),
+                          borderRadius: BorderRadius.circular(16),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            width: 88,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: selected
+                                  ? cs.primaryContainer
+                                  : cs.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: selected ? cs.primary : cs.outlineVariant,
+                              ),
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  mode.icon,
+                                  color: selected
+                                      ? cs.onPrimaryContainer
+                                      : cs.onSurfaceVariant,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  mode.label,
+                                  style: theme.textTheme.labelMedium?.copyWith(
+                                    color: selected
+                                        ? cs.onPrimaryContainer
+                                        : cs.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                _SliderTile(
+                  title: 'Brightness',
+                  value: _options.brightness,
+                  min: -0.4,
+                  max: 0.4,
+                  divisions: 16,
+                  label: '${(_options.brightness * 100).round()}%',
+                  onChanged: (value) => setState(() {
+                    _options = _options.copyWith(brightness: value);
+                  }),
+                ),
+                _SliderTile(
+                  title: 'Contrast',
+                  value: _options.contrast,
+                  min: 0.6,
+                  max: 1.6,
+                  divisions: 10,
+                  label: _options.contrast.toStringAsFixed(2),
+                  onChanged: (value) => setState(() {
+                    _options = _options.copyWith(contrast: value);
+                  }),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Rotate',
+                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 12,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: () => setState(() {
+                        _options = _options.copyWith(
+                          rotationTurns: (_options.rotationTurns + 3) % 4,
+                        );
+                      }),
+                      icon: const Icon(Icons.rotate_left),
+                      label: const Text('Rotate Left'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => setState(() {
+                        _options = _options.copyWith(
+                          rotationTurns: (_options.rotationTurns + 1) % 4,
+                        );
+                      }),
+                      icon: const Icon(Icons.rotate_right),
+                      label: const Text('Rotate Right'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
-void _applyEnhance(img.Image image) {
-  const contrast = 1.2;
-  const bias = -20.0;
-  for (final pixel in image) {
-    pixel
-      ..r = _adjustChannel(pixel.r.toDouble(), contrast, bias)
-      ..g = _adjustChannel(pixel.g.toDouble(), contrast, bias)
-      ..b = _adjustChannel(pixel.b.toDouble(), contrast, bias);
+class _PreviewImage extends StatelessWidget {
+  const _PreviewImage({
+    required this.path,
+    required this.options,
+  });
+
+  final String path;
+  final ImageEditOptions options;
+
+  @override
+  Widget build(BuildContext context) {
+    return RotatedBox(
+      quarterTurns: options.rotationTurns,
+      child: ColorFiltered(
+        colorFilter: ColorFilter.matrix(_previewMatrix(options)),
+        child: Image.file(File(path), fit: BoxFit.contain),
+      ),
+    );
   }
 }
 
-void _applyBlackWhite(img.Image image) {
-  const contrast = 1.85;
-  const bias = -60.0;
-  const threshold = 140;
+List<double> _previewMatrix(ImageEditOptions options) {
+  double rMul = options.contrast;
+  double gMul = options.contrast;
+  double bMul = options.contrast;
+  var rOffset = options.brightness * 255;
+  var gOffset = options.brightness * 255;
+  var bOffset = options.brightness * 255;
 
-  for (final pixel in image) {
-    final gray = (0.2126 * pixel.r + 0.7152 * pixel.g + 0.0722 * pixel.b)
-        .round();
-    final boosted = _adjustChannel(gray.toDouble(), contrast, bias);
-    final bw = boosted >= threshold ? 255 : 0;
-    pixel
-      ..r = bw
-      ..g = bw
-      ..b = bw;
+  if (options.filter == FilterMode.grayscale || options.filter == FilterMode.blackwhite) {
+    rMul = 0.2126 * options.contrast;
+    gMul = 0.7152 * options.contrast;
+    bMul = 0.0722 * options.contrast;
+  } else if (options.filter == FilterMode.enhance) {
+    rMul = 1.18 * options.contrast;
+    gMul = 1.18 * options.contrast;
+    bMul = 1.18 * options.contrast;
+    rOffset -= 14;
+    gOffset -= 14;
+    bOffset -= 14;
+  }
+
+  return [
+    rMul, gMul, bMul, 0, rOffset,
+    rMul, gMul, bMul, 0, gOffset,
+    rMul, gMul, bMul, 0, bOffset,
+    0, 0, 0, 1, 0,
+  ];
+}
+
+class _SliderTile extends StatelessWidget {
+  const _SliderTile({
+    required this.title,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.divisions,
+    required this.label,
+    required this.onChanged,
+  });
+
+  final String title;
+  final double value;
+  final double min;
+  final double max;
+  final int divisions;
+  final String label;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              title,
+              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const Spacer(),
+            Text(label, style: theme.textTheme.labelMedium),
+          ],
+        ),
+        Slider(
+          value: value,
+          min: min,
+          max: max,
+          divisions: divisions,
+          onChanged: onChanged,
+        ),
+      ],
+    );
   }
 }
-
-int _adjustChannel(num value, double contrast, double bias) {
-  final adjusted = ((value.toDouble() - 128.0) * contrast) + 128.0 + bias;
-  if (adjusted < 0) return 0;
-  if (adjusted > 255) return 255;
-  return adjusted.round();
-}
-
 
 class _SheetHandle extends StatelessWidget {
   const _SheetHandle();

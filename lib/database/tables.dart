@@ -14,4 +14,5 @@ class Documents extends Table {
   IntColumn get imageCount => integer().withDefault(const Constant(0))();
   TextColumn get coverImagePath => text().nullable()(); // First image as cover
   BoolColumn get isFavourite => boolean().withDefault(const Constant(false))();
+  IntColumn get folderSizeBytes => integer().withDefault(const Constant(0))();
 }
