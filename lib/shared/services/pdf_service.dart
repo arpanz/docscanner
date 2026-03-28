@@ -8,6 +8,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:uuid/uuid.dart';
+import '../utils/image_utils.dart';
 
 class PdfService {
   final _uuid = const Uuid();
@@ -40,7 +41,7 @@ class PdfService {
     // Fix: add UUID suffix so two rapid builds for the same title don't
     // overwrite each other's temp file before copy completes.
     final uniqueName =
-        '${_sanitize(title)}_${_uuid.v4().substring(0, 8)}.pdf';
+        '${sanitizeFileName(title)}_${_uuid.v4().substring(0, 8)}.pdf';
     final outFile = File(p.join(outDir.path, uniqueName));
     await outFile.writeAsBytes(await doc.save());
     return outFile;
@@ -72,8 +73,6 @@ class PdfService {
     );
   }
 
-  String _sanitize(String name) =>
-      name.replaceAll(RegExp(r'[^\w\s-]'), '').trim().replaceAll(' ', '_');
 }
 
 final pdfServiceProvider = Provider<PdfService>((ref) => PdfService());

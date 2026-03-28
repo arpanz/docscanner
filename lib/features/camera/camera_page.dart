@@ -36,11 +36,21 @@ class _CameraPageState extends ConsumerState<CameraPage> {
     final hasCamera = await permissionService.requestCamera();
     if (!hasCamera) {
       if (!mounted) return;
-      showSnackBar(
-        context,
-        'Camera permission is required to scan documents',
-        isError: true,
-      );
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: const Text('Camera permission is required to scan documents'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            action: SnackBarAction(
+              label: 'Open Settings',
+              textColor: Theme.of(context).colorScheme.onError,
+              onPressed: () => permissionService.openSettings(),
+            ),
+          ),
+        );
       _safePop();
       return;
     }
@@ -124,7 +134,8 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Failed to add pages: $e', isError: true);
+        debugPrint('Failed to add pages: $e');
+        showSnackBar(context, 'Could not add pages. Please try again.', isError: true);
         _safePop();
       }
     }

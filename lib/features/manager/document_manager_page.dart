@@ -12,6 +12,7 @@ import '../../database/app_database.dart';
 import '../../shared/widgets/app_empty_state.dart';
 import '../../shared/widgets/app_loading.dart';
 import '../../shared/services/document_service.dart';
+import '../../shared/utils/image_utils.dart';
 import 'manager_providers.dart';
 import 'widgets/doc_card.dart';
 import 'widgets/sort_bar.dart';
@@ -55,8 +56,7 @@ class DocumentManagerPage extends ConsumerWidget {
                     ? 'Show all documents'
                     : 'Show favourites only',
                 onPressed: () =>
-                    ref.read(showFavouritesOnlyProvider.notifier).state =
-                        !showFavs,
+                    ref.read(showFavouritesOnlyProvider.notifier).toggle(),
               ),
               IconButton(
                 icon: const Icon(Icons.tune_rounded),
@@ -67,7 +67,7 @@ class DocumentManagerPage extends ConsumerWidget {
                   isGrid ? Icons.view_list_rounded : Icons.grid_view_rounded,
                 ),
                 onPressed: () =>
-                    ref.read(isGridViewProvider.notifier).state = !isGrid,
+                    ref.read(isGridViewProvider.notifier).toggle(),
               ),
               const SizedBox(width: 8),
             ],
@@ -91,7 +91,7 @@ class DocumentManagerPage extends ConsumerWidget {
           docsAsync.when(
             loading: () => const SliverFillRemaining(child: AppLoading()),
             error: (e, _) =>
-                SliverFillRemaining(child: Center(child: Text('Error: $e'))),
+                const SliverFillRemaining(child: Center(child: Text('Something went wrong'))),
             data: (docs) {
               if (docs.isEmpty) {
                 return SliverFillRemaining(
@@ -224,7 +224,8 @@ class DocumentManagerPage extends ConsumerWidget {
       return;
     } catch (e) {
       if (context.mounted) {
-        showSnackBar(context, 'Failed to open gallery: $e', isError: true);
+        debugPrint('Failed to open gallery: $e');
+        showSnackBar(context, 'Could not open gallery. Please try again.', isError: true);
       }
       return;
     }
@@ -262,7 +263,8 @@ class DocumentManagerPage extends ConsumerWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        showSnackBar(context, 'Failed to import images: $e', isError: true);
+        debugPrint('Failed to import images: $e');
+        showSnackBar(context, 'Could not import images. Please try again.', isError: true);
       }
     }
   }
@@ -304,9 +306,10 @@ class DocumentManagerPage extends ConsumerWidget {
                         .read(documentServiceProvider)
                         .renameDocument(doc.id, name);
                   } catch (e) {
+                    debugPrint('Failed to rename: $e');
                     messenger.showSnackBar(
                       SnackBar(
-                        content: Text('Failed to rename: $e'),
+                        content: const Text('Could not rename document. Please try again.'),
                         backgroundColor: theme.colorScheme.error,
                       ),
                     );
@@ -354,9 +357,10 @@ class DocumentManagerPage extends ConsumerWidget {
                         .read(documentServiceProvider)
                         .deleteDocument(doc.id);
                   } catch (e) {
+                    debugPrint('Failed to delete: $e');
                     messenger.showSnackBar(
                       SnackBar(
-                        content: Text('Failed to delete: $e'),
+                        content: const Text('Could not delete document. Please try again.'),
                         backgroundColor: theme.colorScheme.error,
                       ),
                     );
@@ -388,7 +392,7 @@ class _ListTileSubtitleState extends State<_ListTileSubtitle> {
   @override
   void initState() {
     super.initState();
-    _sizeFuture = _computeSize(widget.document.folderPath);
+    _sizeFuture = computeFolderSize(widget.document.folderPath);
   }
 
   @override
@@ -396,25 +400,7 @@ class _ListTileSubtitleState extends State<_ListTileSubtitle> {
     super.didUpdateWidget(old);
     if (old.document.folderPath != widget.document.folderPath ||
         old.document.updatedAt != widget.document.updatedAt) {
-      _sizeFuture = _computeSize(widget.document.folderPath);
-    }
-  }
-
-  Future<int> _computeSize(String folderPath) async {
-    try {
-      final folder = Directory(folderPath);
-      if (!await folder.exists()) return 0;
-      int total = 0;
-      await for (final entity in folder.list()) {
-        if (entity is File) {
-          try {
-            total += await entity.length();
-          } catch (_) {}
-        }
-      }
-      return total;
-    } catch (_) {
-      return 0;
+      _sizeFuture = computeFolderSize(widget.document.folderPath);
     }
   }
 

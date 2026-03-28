@@ -13,6 +13,7 @@ import '../../core/constants.dart';
 import '../../core/utils.dart';
 import '../../database/app_database.dart';
 import '../../database/daos.dart';
+import '../utils/image_utils.dart';
 
 class DocumentService {
   DocumentService(this._ref);
@@ -35,7 +36,7 @@ class DocumentService {
   }) async {
     final docsDir = await _documentsDir();
     final folderName =
-        '${_sanitize(title)}_${_uuid.v4().substring(0, 8)}';
+        '${sanitizeFileName(title)}_${_uuid.v4().substring(0, 8)}';
     final folderPath = p.join(docsDir.path, folderName);
     final folder = Directory(folderPath);
     await folder.create(recursive: true);
@@ -68,14 +69,14 @@ class DocumentService {
   }) async {
     final docsDir = await _documentsDir();
     final folderName =
-        '${_sanitize(title)}_${_uuid.v4().substring(0, 8)}';
+        '${sanitizeFileName(title)}_${_uuid.v4().substring(0, 8)}';
     final folderPath = p.join(docsDir.path, folderName);
     final folder = Directory(folderPath);
     await folder.create(recursive: true);
 
     final cleanPath = cleanFilePath(pdfPath);
     final pdfDest =
-        p.join(folderPath, '${_sanitize(title)}.pdf');
+        p.join(folderPath, '${sanitizeFileName(title)}.pdf');
     await File(cleanPath).copy(pdfDest);
 
     final docId = await _docsDao.insertDocument(
@@ -155,7 +156,7 @@ class DocumentService {
     if (await oldFolder.exists()) {
       final parentDir = oldFolder.parent;
       final folderName =
-          '${_sanitize(newTitle)}_${_uuid.v4().substring(0, 8)}';
+          '${sanitizeFileName(newTitle)}_${_uuid.v4().substring(0, 8)}';
       final newFolderPath = p.join(parentDir.path, folderName);
       await oldFolder.rename(newFolderPath);
 
@@ -228,7 +229,7 @@ class DocumentService {
         DateTime.now().millisecondsSinceEpoch.toString();
     final dest = p.join(
       doc.folderPath,
-      '${_sanitize(doc.title)}_$timestamp.pdf',
+      '${sanitizeFileName(doc.title)}_$timestamp.pdf',
     );
     final saved = await tempPdf.copy(dest);
 
@@ -272,6 +273,7 @@ class DocumentService {
     }
 
     // Phase 2: rename to final zero-padded names, with rollback on error
+    final renamedInPhase2 = <int, String>{}; // index → final path
     try {
       for (var i = 0; i < tempPaths.length; i++) {
         final file = File(tempPaths[i]);
@@ -281,12 +283,23 @@ class DocumentService {
               doc.folderPath,
               '${i.toString().padLeft(4, '0')}$ext');
           await file.rename(finalPath);
+          renamedInPhase2[i] = finalPath;
         }
       }
     } catch (e) {
       debugPrint('reorderImages phase-2 failed, attempting rollback: $e');
-      // Rollback: rename temp files back to original names
+      // Rollback only files that were successfully renamed in phase 2
+      for (final entry in renamedInPhase2.entries) {
+        try {
+          final file = File(entry.value);
+          if (await file.exists()) {
+            await file.rename(originalPaths[entry.key]);
+          }
+        } catch (_) {}
+      }
+      // Rollback remaining temp files that weren't renamed yet
       for (var i = 0; i < tempPaths.length; i++) {
+        if (renamedInPhase2.containsKey(i)) continue;
         try {
           final tempFile = File(tempPaths[i]);
           if (await tempFile.exists()) {
@@ -360,10 +373,6 @@ class DocumentService {
     }
   }
 
-  String _sanitize(String name) => name
-      .replaceAll(RegExp(r'[^\w\s-]'), '')
-      .trim()
-      .replaceAll(' ', '_');
 }
 
 final documentServiceProvider =

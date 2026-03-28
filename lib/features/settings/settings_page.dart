@@ -122,12 +122,40 @@ class SettingsPage extends ConsumerWidget {
   }
 
   Future<void> _clearCache(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear cache?'),
+        content: const Text(
+          'This will delete temporary scan files and PDF thumbnails. Your documents will not be affected.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
     try {
       final tempDir = await getTemporaryDirectory();
-      final cacheDir = Directory(tempDir.path);
-      if (await cacheDir.exists()) {
-        int count = 0;
-        await for (final entity in cacheDir.list()) {
+      int count = 0;
+
+      // Only delete app-specific patterns
+      await for (final entity in tempDir.list()) {
+        final name = entity.uri.pathSegments.last;
+        final isAppFile = name.startsWith('scan_append_') ||
+            name.endsWith('.pdf') ||
+            name == 'pdf_thumbnails';
+        if (!isAppFile) continue;
+
+        try {
           if (entity is File) {
             await entity.delete();
             count++;
@@ -135,18 +163,18 @@ class SettingsPage extends ConsumerWidget {
             await entity.delete(recursive: true);
             count++;
           }
-        }
-        if (context.mounted) {
-          showSnackBar(context, 'Cleared $count cached items');
-        }
-      } else {
-        if (context.mounted) {
-          showSnackBar(context, 'Cache is already empty');
-        }
+        } catch (_) {}
+      }
+
+      if (context.mounted) {
+        showSnackBar(context, count > 0
+            ? 'Cleared $count cached items'
+            : 'Cache is already empty');
       }
     } catch (e) {
+      debugPrint('Failed to clear cache: $e');
       if (context.mounted) {
-        showSnackBar(context, 'Failed to clear cache: $e', isError: true);
+        showSnackBar(context, 'Failed to clear cache. Please try again.', isError: true);
       }
     }
   }

@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import '../../../core/utils.dart';
 import '../../../database/app_database.dart';
+import '../../../shared/utils/image_utils.dart';
 
 class DocCard extends StatelessWidget {
   const DocCard({
@@ -28,9 +29,10 @@ class DocCard extends StatelessWidget {
     final tt = Theme.of(context).textTheme;
     final tag = heroTag ?? 'doc_card_${document.id}';
 
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
+      borderRadius: BorderRadius.circular(20),
       child: Hero(
         tag: tag,
         child: Container(
@@ -234,7 +236,7 @@ class _DocCardFooterState extends State<_DocCardFooter> {
   @override
   void initState() {
     super.initState();
-    _sizeFuture = _computeFolderSize(widget.document.folderPath);
+    _sizeFuture = computeFolderSize(widget.document.folderPath);
   }
 
   @override
@@ -242,25 +244,7 @@ class _DocCardFooterState extends State<_DocCardFooter> {
     super.didUpdateWidget(old);
     if (old.document.folderPath != widget.document.folderPath ||
         old.document.updatedAt != widget.document.updatedAt) {
-      _sizeFuture = _computeFolderSize(widget.document.folderPath);
-    }
-  }
-
-  Future<int> _computeFolderSize(String folderPath) async {
-    try {
-      final folder = Directory(folderPath);
-      if (!await folder.exists()) return 0;
-      int total = 0;
-      await for (final entity in folder.list()) {
-        if (entity is File) {
-          try {
-            total += await entity.length();
-          } catch (_) {}
-        }
-      }
-      return total;
-    } catch (_) {
-      return 0;
+      _sizeFuture = computeFolderSize(widget.document.folderPath);
     }
   }
 

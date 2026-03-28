@@ -1,5 +1,6 @@
 // lib/features/manager/manager_providers.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../database/app_database.dart';
 
 // ---------------------------------------------------------------------------
@@ -13,22 +14,93 @@ extension SortOptionLabel on SortOption {
     SortOption.dateAsc => 'Oldest first',
     SortOption.nameAsc => 'Name A–Z',
     SortOption.nameDesc => 'Name Z–A',
-    SortOption.pagesDesc => 'Most images',  // renamed from 'Most pages' — imageCount counts images, not PDF pages
+    SortOption.pagesDesc => 'Most images',
   };
+}
+
+// ---------------------------------------------------------------------------
+// Persisted preference notifiers
+// ---------------------------------------------------------------------------
+const _kSortOption = 'sort_option';
+const _kIsGridView = 'is_grid_view';
+const _kShowFavouritesOnly = 'show_favourites_only';
+
+class SortOptionNotifier extends Notifier<SortOption> {
+  @override
+  SortOption build() {
+    _loadSaved();
+    return SortOption.dateDesc;
+  }
+
+  Future<void> _loadSaved() async {
+    final prefs = await SharedPreferences.getInstance();
+    final idx = prefs.getInt(_kSortOption);
+    if (idx != null && idx < SortOption.values.length) {
+      state = SortOption.values[idx];
+    }
+  }
+
+  Future<void> set(SortOption option) async {
+    state = option;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kSortOption, option.index);
+  }
+}
+
+class IsGridViewNotifier extends Notifier<bool> {
+  @override
+  bool build() {
+    _loadSaved();
+    return true;
+  }
+
+  Future<void> _loadSaved() async {
+    final prefs = await SharedPreferences.getInstance();
+    final val = prefs.getBool(_kIsGridView);
+    if (val != null) state = val;
+  }
+
+  Future<void> toggle() async {
+    state = !state;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kIsGridView, state);
+  }
+}
+
+class ShowFavouritesOnlyNotifier extends Notifier<bool> {
+  @override
+  bool build() {
+    _loadSaved();
+    return false;
+  }
+
+  Future<void> _loadSaved() async {
+    final prefs = await SharedPreferences.getInstance();
+    final val = prefs.getBool(_kShowFavouritesOnly);
+    if (val != null) state = val;
+  }
+
+  Future<void> toggle() async {
+    state = !state;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kShowFavouritesOnly, state);
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Providers
 // ---------------------------------------------------------------------------
-final sortOptionProvider = StateProvider<SortOption>(
-  (_) => SortOption.dateDesc,
-);
+final sortOptionProvider =
+    NotifierProvider<SortOptionNotifier, SortOption>(SortOptionNotifier.new);
 
 final searchQueryProvider = StateProvider<String>((_) => '');
 
-final isGridViewProvider = StateProvider<bool>((ref) => true);
+final isGridViewProvider =
+    NotifierProvider<IsGridViewNotifier, bool>(IsGridViewNotifier.new);
 
-final showFavouritesOnlyProvider = StateProvider<bool>((ref) => false);
+final showFavouritesOnlyProvider =
+    NotifierProvider<ShowFavouritesOnlyNotifier, bool>(
+        ShowFavouritesOnlyNotifier.new);
 
 final allDocumentsProvider = StreamProvider<List<Document>>((ref) {
   final dao = ref.watch(documentsDaoProvider);

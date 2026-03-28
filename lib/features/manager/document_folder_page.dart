@@ -14,6 +14,7 @@ import '../../shared/services/document_service.dart';
 import '../../shared/services/pdf_service.dart';
 import '../../core/router.dart';
 import '../../core/utils.dart';
+import '../../shared/utils/image_utils.dart';
 import '../../shared/widgets/app_empty_state.dart';
 
 class DocumentFolderPage extends ConsumerStatefulWidget {
@@ -204,7 +205,8 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
         );
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Failed to create PDF: $e', isError: true);
+        debugPrint('Failed to create PDF: $e');
+        showSnackBar(context, 'Could not create PDF. Please try again.', isError: true);
       }
     }
   }
@@ -280,7 +282,8 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Failed to delete: $e', isError: true);
+        debugPrint('Failed to delete: $e');
+        showSnackBar(context, 'Could not delete images. Please try again.', isError: true);
       }
     }
   }
@@ -324,7 +327,8 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Failed to share: $e', isError: true);
+        debugPrint('Failed to share: $e');
+        showSnackBar(context, 'Could not share. Please try again.', isError: true);
       }
     }
   }
@@ -672,9 +676,18 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                   final item = reordered.removeAt(oldIndex);
                   reordered.insert(newIndex, item);
                   setState(() => _cachedImagePaths = reordered);
-                  await ref
-                      .read(documentServiceProvider)
-                      .reorderImages(widget.docId, reordered);
+                  try {
+                    await ref
+                        .read(documentServiceProvider)
+                        .reorderImages(widget.docId, reordered);
+                    if (mounted) showSnackBar(context, 'Pages reordered');
+                  } catch (e) {
+                    debugPrint('Reorder failed: $e');
+                    if (mounted) {
+                      showSnackBar(context, 'Reorder failed. Please try again.', isError: true);
+                      await _loadDocument();
+                    }
+                  }
                 },
                 itemBuilder: (context, index) {
                   return _ReorderTile(
@@ -749,40 +762,37 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                 child: SafeArea(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
+                      horizontal: 8,
+                      vertical: 4,
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
-                        _ActionChip(
+                        _BottomBarItem(
                           icon: Icons.auto_fix_high_rounded,
-                          label: _selectMode ? 'Edit Selected' : 'Edit All',
-                          color: cs.tertiary,
+                          label: 'Edit',
                           onPressed: _isEditing
                               ? null
                               : (_selectMode ? _editSelected : _editAllPages),
                         ),
-                        _ActionChip(
+                        _BottomBarItem(
                           icon: Icons.picture_as_pdf,
-                          label: _selectMode ? 'PDF Selected' : 'PDF All',
-                          color: cs.secondary,
+                          label: 'PDF',
                           onPressed: _isEditing
                               ? null
                               : (_selectMode ? _createPdf : _createPdfAll),
                         ),
-                        _ActionChip(
+                        _BottomBarItem(
                           icon: Icons.share,
-                          label: _selectMode ? 'Share Selected' : 'Share All',
-                          color: cs.primary,
+                          label: 'Share',
                           onPressed: _isEditing
                               ? null
                               : (_selectMode ? _shareSelected : _shareAll),
                         ),
-                        _ActionChip(
+                        _BottomBarItem(
                           icon: Icons.delete_outline,
-                          label: _selectMode ? 'Delete Selected' : 'Delete All',
-                          color: cs.error,
+                          label: 'Delete',
+                          isDestructive: true,
                           onPressed: _isEditing
                               ? null
                               : (_selectMode ? _deleteSelected : _deleteAll),
@@ -873,7 +883,8 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
       await _loadDocument();
       if (mounted) showSnackBar(context, 'Document renamed');
     } catch (e) {
-      if (mounted) showSnackBar(context, 'Failed to rename: $e', isError: true);
+      debugPrint('Failed to rename: $e');
+      if (mounted) showSnackBar(context, 'Could not rename document. Please try again.', isError: true);
     }
   }
 
@@ -907,7 +918,8 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
         showSnackBar(context, 'Document deleted');
       }
     } catch (e) {
-      if (mounted) showSnackBar(context, 'Failed to delete: $e', isError: true);
+      debugPrint('Failed to delete document: $e');
+      if (mounted) showSnackBar(context, 'Could not delete document. Please try again.', isError: true);
     }
   }
 }
@@ -961,14 +973,16 @@ class _ReorderTile extends StatelessWidget {
             ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
           const Spacer(),
-          // Single drag handle via ReorderableDragStartListener
+          // Single drag handle via ReorderableDragStartListener (48dp touch target)
           ReorderableDragStartListener(
             index: index,
-            child: const Padding(
-              padding: EdgeInsets.only(right: 12),
-              child: Icon(Icons.drag_handle_rounded),
+            child: const SizedBox(
+              width: 48,
+              height: 48,
+              child: Center(child: Icon(Icons.drag_handle_rounded)),
             ),
           ),
+          const SizedBox(width: 4),
         ],
       ),
     );
@@ -1024,6 +1038,16 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
         ),
         title: Text(widget.title),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.rotate_left),
+            tooltip: 'Rotate left',
+            onPressed: _isEditing ? null : () => _rotateCurrentPage(clockwise: false),
+          ),
+          IconButton(
+            icon: const Icon(Icons.rotate_right),
+            tooltip: 'Rotate right',
+            onPressed: _isEditing ? null : () => _rotateCurrentPage(clockwise: true),
+          ),
           IconButton(
             icon: const Icon(Icons.auto_fix_high_rounded),
             tooltip: 'Edit page',
@@ -1091,6 +1115,30 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
               ),
             )
           : null,
+    );
+  }
+
+  Future<void> _rotateCurrentPage({required bool clockwise}) async {
+    setState(() => _isEditing = true);
+    final imagePath = widget.imagePaths[_currentIndex];
+    final ok = await rotateImageFile(imagePath, clockwise: clockwise);
+
+    if (!mounted) return;
+    setState(() {
+      _isEditing = false;
+      _editedAny = _editedAny || ok;
+    });
+
+    // Force image reload by evicting from cache
+    if (ok) {
+      imageCache.clear();
+      imageCache.clearLiveImages();
+    }
+
+    showSnackBar(
+      context,
+      ok ? 'Page rotated' : 'Failed to rotate page',
+      isError: !ok,
     );
   }
 
@@ -1206,9 +1254,10 @@ class _ImageTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
+      borderRadius: BorderRadius.circular(12),
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -1246,47 +1295,46 @@ class _ImageTile extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Action Chip
+// Bottom Bar Item — icon + label, works on any screen width
 // ---------------------------------------------------------------------------
-class _ActionChip extends StatelessWidget {
-  const _ActionChip({
+class _BottomBarItem extends StatelessWidget {
+  const _BottomBarItem({
     required this.icon,
     required this.label,
-    required this.color,
     required this.onPressed,
+    this.isDestructive = false,
   });
 
   final IconData icon;
   final String label;
-  final Color color;
   final VoidCallback? onPressed;
+  final bool isDestructive;
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final disabled = onPressed == null;
+    final color = disabled
+        ? cs.onSurface.withOpacity(0.38)
+        : isDestructive
+            ? cs.error
+            : cs.onSurface;
     return InkWell(
       onTap: onPressed,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: (onPressed == null ? Colors.grey : color).withOpacity(0.1),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              color: onPressed == null ? Colors.grey : color,
-              size: 20,
-            ),
-            const SizedBox(width: 8),
+            Icon(icon, color: color, size: 22),
+            const SizedBox(height: 4),
             Text(
               label,
               style: TextStyle(
-                color: onPressed == null ? Colors.grey : color,
+                color: color,
+                fontSize: 11,
                 fontWeight: FontWeight.w600,
-                fontSize: 14,
               ),
             ),
           ],

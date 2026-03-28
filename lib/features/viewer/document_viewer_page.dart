@@ -11,6 +11,7 @@ import '../../core/router.dart';
 import '../../database/app_database.dart';
 import '../../shared/widgets/app_empty_state.dart';
 import '../../shared/widgets/app_loading.dart';
+import '../../shared/services/pdf_service.dart';
 import 'viewer_providers.dart';
 
 class DocumentViewerPage extends ConsumerStatefulWidget {
@@ -33,7 +34,7 @@ class _DocumentViewerPageState
     return docAsync.when(
       loading: () => const Scaffold(body: AppLoading()),
       error: (e, _) =>
-          Scaffold(body: Center(child: Text('Error: $e'))),
+          Scaffold(body: Center(child: Text('Something went wrong', style: TextStyle(color: Theme.of(context).colorScheme.error)))),
       data: (doc) {
         if (doc == null) {
           return Scaffold(
@@ -70,18 +71,18 @@ class _DocumentViewerPageState
 // PDF viewer scaffold — caches bytes in initState so PdfPreview
 // does not re-read the file on every build callback.
 // ---------------------------------------------------------------------------
-class _PdfViewerScaffold extends StatefulWidget {
+class _PdfViewerScaffold extends ConsumerStatefulWidget {
   const _PdfViewerScaffold(
       {required this.doc, required this.pdfPath});
   final Document doc;
   final String pdfPath;
 
   @override
-  State<_PdfViewerScaffold> createState() =>
+  ConsumerState<_PdfViewerScaffold> createState() =>
       _PdfViewerScaffoldState();
 }
 
-class _PdfViewerScaffoldState extends State<_PdfViewerScaffold> {
+class _PdfViewerScaffoldState extends ConsumerState<_PdfViewerScaffold> {
   Uint8List? _pdfBytes;
   String? _loadError;
 
@@ -116,7 +117,16 @@ class _PdfViewerScaffoldState extends State<_PdfViewerScaffold> {
         title: Text(widget.doc.title),
         actions: [
           IconButton(
-            icon: const Icon(Icons.ios_share),
+            icon: const Icon(Icons.print_rounded),
+            tooltip: 'Print',
+            onPressed: () async {
+              final pdfService = ref.read(pdfServiceProvider);
+              await pdfService.printPdf(File(widget.pdfPath));
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.share),
+            tooltip: 'Share',
             onPressed: () async {
               await SharePlus.instance.share(
                 ShareParams(
@@ -133,13 +143,11 @@ class _PdfViewerScaffoldState extends State<_PdfViewerScaffold> {
       ),
       body: _loadError != null
           ? Center(
-              child: Text('Failed to load PDF: $_loadError',
+              child: Text('Failed to load PDF',
                   style: TextStyle(color: cs.error)))
           : _pdfBytes == null
               ? const AppLoading()
               : PdfPreview(
-                  // Fix: supply cached bytes — avoids re-reading file
-                  // on every PdfPreview build callback.
                   build: (format) async => _pdfBytes!,
                   useActions: false,
                   canChangeOrientation: false,

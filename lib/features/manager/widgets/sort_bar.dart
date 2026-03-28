@@ -23,7 +23,7 @@ class SortBar extends ConsumerWidget {
             child: ChoiceChip(
               label: Text(opt.label, style: const TextStyle(fontSize: 12)),
               selected: selected,
-              showCheckmark: false,
+              showCheckmark: selected,
               backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
               selectedColor: theme.colorScheme.primaryContainer,
               side: BorderSide(
@@ -32,7 +32,7 @@ class SortBar extends ConsumerWidget {
               ),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               onSelected: (_) =>
-                  ref.read(sortOptionProvider.notifier).state = opt,
+                  ref.read(sortOptionProvider.notifier).set(opt),
               labelStyle: theme.textTheme.labelSmall?.copyWith(
                 color: selected
                     ? theme.colorScheme.onPrimaryContainer
