@@ -1,5 +1,6 @@
 // lib/features/camera/widgets/native_camera_preview.dart
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -50,7 +51,11 @@ class _NativeCameraPreviewState extends ConsumerState<NativeCameraPreview> {
 
     _edgeSubscription = ScannerBridge.edgeStream.listen(
       (data) {
-        widget.onCornerDetected(data.corners, data.frameWidth, data.frameHeight);
+        widget.onCornerDetected(
+          data.corners,
+          data.frameWidth,
+          data.frameHeight,
+        );
       },
       onError: (error) {
         final platformError = error as PlatformException;
@@ -274,9 +279,10 @@ class _ManualCropEditorState extends State<ManualCropEditor>
       vsync: this,
       duration: const Duration(milliseconds: 900),
     )..repeat(reverse: true);
-    _pulseAnim = Tween<double>(begin: 0.85, end: 1.15).animate(
-      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut),
-    );
+    _pulseAnim = Tween<double>(
+      begin: 0.85,
+      end: 1.15,
+    ).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
   }
 
   @override
@@ -288,17 +294,21 @@ class _ManualCropEditorState extends State<ManualCropEditor>
   /// Convert image coords → screen coords within the display box.
   Offset _toScreen(double ix, double iy) {
     if (widget.imageWidth == 0 || widget.imageHeight == 0) return Offset.zero;
-    final sx = (ix / widget.imageWidth) * _displaySize.width + _displayOffset.dx;
-    final sy = (iy / widget.imageHeight) * _displaySize.height + _displayOffset.dy;
+    final sx =
+        (ix / widget.imageWidth) * _displaySize.width + _displayOffset.dx;
+    final sy =
+        (iy / widget.imageHeight) * _displaySize.height + _displayOffset.dy;
     return Offset(sx, sy);
   }
 
   /// Convert screen coords → image coords.
   Offset _toImage(Offset screen) {
     if (_displaySize == Size.zero) return Offset.zero;
-    final ix = ((screen.dx - _displayOffset.dx) / _displaySize.width) *
+    final ix =
+        ((screen.dx - _displayOffset.dx) / _displaySize.width) *
         widget.imageWidth;
-    final iy = ((screen.dy - _displayOffset.dy) / _displaySize.height) *
+    final iy =
+        ((screen.dy - _displayOffset.dy) / _displaySize.height) *
         widget.imageHeight;
     return Offset(
       ix.clamp(0.0, widget.imageWidth.toDouble()),
@@ -307,8 +317,7 @@ class _ManualCropEditorState extends State<ManualCropEditor>
   }
 
   void _updateDisplayGeometry() {
-    final box =
-        _imageKey.currentContext?.findRenderObject() as RenderBox?;
+    final box = _imageKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return;
     _displaySize = box.size;
     _displayOffset = box.localToGlobal(Offset.zero);
@@ -356,8 +365,6 @@ class _ManualCropEditorState extends State<ManualCropEditor>
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -395,7 +402,7 @@ class _ManualCropEditorState extends State<ManualCropEditor>
               onPanUpdate: _onPanUpdate,
               onPanEnd: _onPanEnd,
               child: LayoutBuilder(
-                builder: (ctx, constraints) {
+                builder: (context, constraints) {
                   WidgetsBinding.instance.addPostFrameCallback(
                     (_) => _updateDisplayGeometry(),
                   );
@@ -427,7 +434,7 @@ class _ManualCropEditorState extends State<ManualCropEditor>
                 ),
                 child: AnimatedBuilder(
                   animation: _pulseAnim,
-                  builder: (_, __) => const SizedBox.expand(),
+                  builder: (context, child) => const SizedBox.expand(),
                 ),
               ),
             ),
@@ -440,11 +447,7 @@ class _ManualCropEditorState extends State<ManualCropEditor>
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                Icons.touch_app_outlined,
-                color: Colors.white54,
-                size: 18,
-              ),
+              Icon(Icons.touch_app_outlined, color: Colors.white54, size: 18),
               const SizedBox(width: 8),
               const Text(
                 'Drag the corner handles to adjust the crop',
@@ -552,9 +555,7 @@ class _ManualCropPainter extends CustomPainter {
         p,
         radius,
         Paint()
-          ..color = isActive
-              ? color
-              : Colors.white.withValues(alpha: 0.92)
+          ..color = isActive ? color : Colors.white.withValues(alpha: 0.92)
           ..style = PaintingStyle.fill,
       );
       canvas.drawCircle(
