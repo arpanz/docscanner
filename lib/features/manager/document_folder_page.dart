@@ -21,6 +21,8 @@ import '../../shared/services/pdf_service.dart';
 import '../../shared/widgets/app_empty_state.dart';
 import '../camera/widgets/crop_enhance_sheet.dart';
 
+final Map<String, _ImageItemDetails> _imageDetailsCache = {};
+
 class DocumentFolderPage extends ConsumerStatefulWidget {
   const DocumentFolderPage({super.key, required this.docId});
   final int docId;
@@ -89,21 +91,40 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
       return;
     }
 
+    final retainedDetails = <String, _ImageItemDetails>{
+      for (final path in paths)
+        if (_imageDetailsByPath[path] != null) path: _imageDetailsByPath[path]!,
+    };
+
+    for (final path in paths) {
+      final cachedDetails = _getCachedImageDetails(path);
+      if (cachedDetails != null) {
+        retainedDetails[path] = cachedDetails;
+      }
+    }
+
     setState(() {
       _cachedImagePaths = paths;
-      _imageDetailsByPath = {};
+      _imageDetailsByPath = retainedDetails;
       _imagesLoaded = true;
     });
 
-    if (paths.isEmpty) return;
-    final rawDetails = await compute(_readImageDetails, paths);
+    final missingPaths = paths
+        .where((path) => !retainedDetails.containsKey(path))
+        .toList();
+    if (missingPaths.isEmpty) return;
+
+    final rawDetails = await compute(_readImageDetails, missingPaths);
     if (!mounted || !listEquals(paths, _cachedImagePaths)) return;
 
+    final computedDetails = {
+      for (final raw in rawDetails)
+        raw['path']! as String: _ImageItemDetails.fromMap(raw),
+    };
+    _imageDetailsCache.addAll(computedDetails);
+
     setState(() {
-      _imageDetailsByPath = {
-        for (final raw in rawDetails)
-          raw['path']! as String: _ImageItemDetails.fromMap(raw),
-      };
+      _imageDetailsByPath = {..._imageDetailsByPath, ...computedDetails};
     });
   }
 
@@ -292,6 +313,9 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
       await ref
           .read(documentServiceProvider)
           .deleteImages(widget.docId, validPaths);
+      for (final path in validPaths) {
+        _imageDetailsCache.remove(path);
+      }
       if (_document != null) {
         await _loadImages(_document!);
       }
@@ -1718,6 +1742,7 @@ class _FullScreenImageViewerState
       await ref.read(documentServiceProvider).deleteImages(widget.docId, [
         imagePath,
       ]);
+      _imageDetailsCache.remove(imagePath);
       if (!mounted) return;
 
       if (_imagePaths.length == 1) {
@@ -1759,10 +1784,11 @@ class _FullScreenImageViewerState
     final rawDetails = await compute(_readImageDetails, [imagePath]);
     if (!mounted || rawDetails.isEmpty) return;
 
+    final details = _ImageItemDetails.fromMap(rawDetails.first);
+    _imageDetailsCache[imagePath] = details;
+
     setState(() {
-      _imageDetailsByPath[imagePath] = _ImageItemDetails.fromMap(
-        rawDetails.first,
-      );
+      _imageDetailsByPath[imagePath] = details;
     });
   }
 
@@ -2209,6 +2235,24 @@ class _ImageItemDetails {
     if (modifiedAt == null) return 'Date unavailable';
     return 'Updated ${formatDate(modifiedAt!)}';
   }
+}
+
+_ImageItemDetails? _getCachedImageDetails(String path) {
+  final cached = _imageDetailsCache[path];
+  if (cached == null) return null;
+
+  try {
+    final stat = File(path).statSync();
+    final cachedModifiedAtMs = cached.modifiedAt?.millisecondsSinceEpoch ?? -1;
+    final currentModifiedAtMs = stat.modified.millisecondsSinceEpoch;
+    if (cached.sizeBytes == stat.size &&
+        cachedModifiedAtMs == currentModifiedAtMs) {
+      return cached;
+    }
+  } catch (_) {}
+
+  _imageDetailsCache.remove(path);
+  return null;
 }
 
 List<Map<String, Object?>> _readImageDetails(List<String> paths) {

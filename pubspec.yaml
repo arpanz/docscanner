@@ -23,6 +23,8 @@ dependencies:
   go_router: ^17.1.0
 
   # Camera & scanning
+  # Note: flutter_doc_scanner is used for iOS only
+  # Android uses native CameraX + OpenCV implementation
   flutter_doc_scanner: ^0.0.18
 
   # Image processing
