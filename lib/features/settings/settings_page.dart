@@ -93,44 +93,31 @@ class SettingsPage extends ConsumerWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Select Theme', style: const TextStyle(fontWeight: FontWeight.w800)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            RadioListTile<ThemeMode>(
-              title: Text('System default', style: const TextStyle(fontWeight: FontWeight.w800)),
-              subtitle: Text('Follow device theme', style: const TextStyle(fontWeight: FontWeight.w800)),
-              value: ThemeMode.system,
-              groupValue: current,
-              onChanged: (value) {
-                if (value != null) {
-                  ref.read(themeModeProvider.notifier).setMode(value);
-                  Navigator.pop(ctx);
-                }
-              },
-            ),
-            RadioListTile<ThemeMode>(
-              title: Text('Light', style: const TextStyle(fontWeight: FontWeight.w800)),
-              value: ThemeMode.light,
-              groupValue: current,
-              onChanged: (value) {
-                if (value != null) {
-                  ref.read(themeModeProvider.notifier).setMode(value);
-                  Navigator.pop(ctx);
-                }
-              },
-            ),
-            RadioListTile<ThemeMode>(
-              title: Text('Dark', style: const TextStyle(fontWeight: FontWeight.w800)),
-              value: ThemeMode.dark,
-              groupValue: current,
-              onChanged: (value) {
-                if (value != null) {
-                  ref.read(themeModeProvider.notifier).setMode(value);
-                  Navigator.pop(ctx);
-                }
-              },
-            ),
-          ],
+        content: RadioGroup<ThemeMode>(
+          groupValue: current,
+          onChanged: (value) {
+            if (value == null) return;
+            ref.read(themeModeProvider.notifier).setMode(value);
+            Navigator.pop(ctx);
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              RadioListTile<ThemeMode>(
+                title: Text('System default', style: const TextStyle(fontWeight: FontWeight.w800)),
+                subtitle: Text('Follow device theme', style: const TextStyle(fontWeight: FontWeight.w800)),
+                value: ThemeMode.system,
+              ),
+              RadioListTile<ThemeMode>(
+                title: Text('Light', style: const TextStyle(fontWeight: FontWeight.w800)),
+                value: ThemeMode.light,
+              ),
+              RadioListTile<ThemeMode>(
+                title: Text('Dark', style: const TextStyle(fontWeight: FontWeight.w800)),
+                value: ThemeMode.dark,
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -151,21 +138,22 @@ class SettingsPage extends ConsumerWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('PDF page size', style: const TextStyle(fontWeight: FontWeight.w800)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: PdfPageSizeOption.values.map((option) {
-            return RadioListTile<PdfPageSizeOption>(
-              title: Text(option.label),
-              value: option,
-              groupValue: current,
-              onChanged: (value) {
-                if (value != null) {
-                  ref.read(pageSizePreferenceProvider.notifier).setValue(value.name);
-                  Navigator.pop(ctx);
-                }
-              },
-            );
-          }).toList(),
+        content: RadioGroup<PdfPageSizeOption>(
+          groupValue: current,
+          onChanged: (value) {
+            if (value == null) return;
+            ref.read(pageSizePreferenceProvider.notifier).setValue(value.name);
+            Navigator.pop(ctx);
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: PdfPageSizeOption.values.map((option) {
+              return RadioListTile<PdfPageSizeOption>(
+                title: Text(option.label),
+                value: option,
+              );
+            }).toList(),
+          ),
         ),
         actions: [
           TextButton(

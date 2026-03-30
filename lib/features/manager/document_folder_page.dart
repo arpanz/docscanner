@@ -1060,7 +1060,8 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                     ),
                   ),
                 ),
-              )
+              ),
+            )
             : null,
         floatingActionButton: _reorderMode
             ? null
@@ -1440,7 +1441,7 @@ class _FullScreenImageViewerState
                         ),
                       ),
                     ),
-                  ),
+                    ),
                 ),
               ),
             ),
@@ -1506,53 +1507,54 @@ class _FullScreenImageViewerState
                               _ActionChip(
                                 icon: Icons.auto_fix_high_rounded,
                                 label: 'Edit',
-                              color: cs.tertiary,
-                              onPressed: _isEditing ? null : _editCurrentPage,
-                            ),
-                            const SizedBox(width: 10),
-                            _ActionChip(
-                              icon: Icons.picture_as_pdf,
-                              label: 'PDF',
-                              color: cs.secondary,
-                              onPressed: _isEditing
-                                  ? null
-                                  : _createPdfForCurrentPage,
-                            ),
-                            const SizedBox(width: 10),
-                            _ActionChip(
-                              icon: Icons.share,
-                              label: 'Share',
-                              color: cs.primary,
-                              onPressed: _isEditing ? null : _shareCurrentPage,
-                            ),
-                            if (_hasPdf) ...[
+                                color: cs.tertiary,
+                                onPressed: _isEditing ? null : _editCurrentPage,
+                              ),
                               const SizedBox(width: 10),
                               _ActionChip(
-                                icon: Icons.visibility_outlined,
-                                label: 'View PDF',
+                                icon: Icons.picture_as_pdf,
+                                label: 'PDF',
+                                color: cs.secondary,
+                                onPressed: _isEditing
+                                    ? null
+                                    : _createPdfForCurrentPage,
+                              ),
+                              const SizedBox(width: 10),
+                              _ActionChip(
+                                icon: Icons.share,
+                                label: 'Share',
                                 color: cs.primary,
-                                onPressed: _viewPdf,
+                                onPressed: _isEditing ? null : _shareCurrentPage,
+                              ),
+                              if (_hasPdf) ...[
+                                const SizedBox(width: 10),
+                                _ActionChip(
+                                  icon: Icons.visibility_outlined,
+                                  label: 'View PDF',
+                                  color: cs.primary,
+                                  onPressed: _viewPdf,
+                                ),
+                              ],
+                              const SizedBox(width: 10),
+                              _ActionChip(
+                                icon: Icons.text_snippet_outlined,
+                                label: 'OCR',
+                                color: cs.primary,
+                                onPressed: _isEditing
+                                    ? null
+                                    : _extractTextForCurrentPage,
+                              ),
+                              const SizedBox(width: 10),
+                              OutlinedButton.icon(
+                                onPressed: _isEditing ? null : _deleteCurrentPage,
+                                icon: Icon(Icons.delete_outline, color: cs.error),
+                                label: Text(
+                                  'Delete',
+                                  style: TextStyle(color: cs.error),
+                                ),
                               ),
                             ],
-                            const SizedBox(width: 10),
-                            _ActionChip(
-                              icon: Icons.text_snippet_outlined,
-                              label: 'OCR',
-                              color: cs.primary,
-                              onPressed: _isEditing
-                                  ? null
-                                  : _extractTextForCurrentPage,
-                            ),
-                            const SizedBox(width: 10),
-                            OutlinedButton.icon(
-                              onPressed: _isEditing ? null : _deleteCurrentPage,
-                              icon: Icon(Icons.delete_outline, color: cs.error),
-                              label: Text(
-                                'Delete',
-                                style: TextStyle(color: cs.error),
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     ),

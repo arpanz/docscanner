@@ -35,7 +35,7 @@ class DocCard extends StatelessWidget {
       onLongPress: onLongPress,
       child: Hero(
         tag: tag,
-        flightShuttleBuilder: (_, animation, __, ___, ____) {
+        flightShuttleBuilder: (context, animation, flightDirection, fromContext, toContext) {
           final coverPath = document.coverImagePath;
           Widget imageWidget = const SizedBox.shrink();
           if (coverPath != null) {
