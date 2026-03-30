@@ -5,24 +5,32 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../shared/services/scanner_bridge.dart';
+
 /// Provider for the native camera preview controller.
 final nativeCameraPreviewControllerProvider =
-    Provider<NativeCameraPreviewController>((ref) {
+    ChangeNotifierProvider<NativeCameraPreviewController>((ref) {
   return NativeCameraPreviewController();
 });
 
 /// Controller for managing native camera preview state.
 class NativeCameraPreviewController extends ChangeNotifier {
   List<double> _corners = [];
+  int _frameWidth = 0;
+  int _frameHeight = 0;
   bool _isReady = false;
   String? _error;
 
   List<double> get corners => _corners;
+  int get frameWidth => _frameWidth;
+  int get frameHeight => _frameHeight;
   bool get isReady => _isReady;
   String? get error => _error;
 
-  void updateCorners(List<double> corners) {
+  void updateCorners(List<double> corners, int frameWidth, int frameHeight) {
     _corners = corners;
+    _frameWidth = frameWidth;
+    _frameHeight = frameHeight;
     notifyListeners();
   }
 
@@ -40,6 +48,8 @@ class NativeCameraPreviewController extends ChangeNotifier {
 
   void reset() {
     _corners = [];
+    _frameWidth = 0;
+    _frameHeight = 0;
     _isReady = false;
     _error = null;
     notifyListeners();
@@ -58,7 +68,7 @@ class NativeCameraPreview extends ConsumerStatefulWidget {
     this.onError,
   });
 
-  final Function(List<double>) onCornerDetected;
+  final Function(List<double>, int, int) onCornerDetected;
   final VoidCallback? onCameraReady;
   final Function(String)? onError;
 
@@ -81,12 +91,14 @@ class _NativeCameraPreviewState extends ConsumerState<NativeCameraPreview> {
     if (_isListening) return;
     _isListening = true;
 
-    const edgeChannel = EventChannel('com.example.docscanner/edges');
-    _edgeSubscription = edgeChannel.receiveBroadcastStream().listen(
-      (event) {
-        final corners = List<double>.from(event);
-        widget.onCornerDetected(corners);
-        ref.read(nativeCameraPreviewControllerProvider).updateCorners(corners);
+    ScannerBridge.edgeStream.listen(
+      (data) {
+        widget.onCornerDetected(data.corners, data.frameWidth, data.frameHeight);
+        ref.read(nativeCameraPreviewControllerProvider).updateCorners(
+          data.corners,
+          data.frameWidth,
+          data.frameHeight,
+        );
       },
       onError: (error) {
         final platformError = error as PlatformException;
@@ -147,26 +159,30 @@ class _NativeCameraPreviewState extends ConsumerState<NativeCameraPreview> {
 class DocumentEdgeOverlayPainter extends CustomPainter {
   DocumentEdgeOverlayPainter({
     required this.corners,
+    required this.frameWidth,
+    required this.frameHeight,
     this.strokeWidth = 3.0,
     this.color = const Color(0xFF00FF00),
     this.fillColor = const Color(0x4000FF00),
   });
 
   final List<double> corners;
+  final int frameWidth;
+  final int frameHeight;
   final double strokeWidth;
   final Color color;
   final Color fillColor;
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (corners.length < 8) return;
+    if (corners.length < 8 || frameWidth == 0 || frameHeight == 0) return;
 
-    // Convert corners to Offset list
+    // Convert corners to Offset list with proper scaling
     final points = <Offset>[];
     for (var i = 0; i < corners.length; i += 2) {
       // Scale corners from image coordinates to screen coordinates
-      final x = (corners[i] / 1920) * size.width;
-      final y = (corners[i + 1] / 1080) * size.height;
+      final x = (corners[i] / frameWidth) * size.width;
+      final y = (corners[i + 1] / frameHeight) * size.height;
       points.add(Offset(x, y));
     }
 
@@ -206,6 +222,8 @@ class DocumentEdgeOverlayPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant DocumentEdgeOverlayPainter oldDelegate) {
-    return oldDelegate.corners != corners;
+    return oldDelegate.corners != corners ||
+        oldDelegate.frameWidth != frameWidth ||
+        oldDelegate.frameHeight != frameHeight;
   }
 }

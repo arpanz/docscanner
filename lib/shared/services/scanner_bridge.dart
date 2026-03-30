@@ -14,11 +14,16 @@ class ScannerBridge {
       EventChannel('com.example.docscanner/edges');
 
   /// Stream of detected document corners from OpenCV.
-  /// Returns list of 8 doubles: [x1,y1, x2,y2, x3,y3, x4,y4]
-  /// representing the 4 corners of the detected document.
-  static Stream<List<double>> get edgeStream => _eventChannel
+  /// Returns [EdgeDetectionData] with corners and frame dimensions.
+  static Stream<EdgeDetectionData> get edgeStream => _eventChannel
       .receiveBroadcastStream()
-      .map((event) => List<double>.from(event));
+      .map((event) {
+        final data = Map<String, dynamic>.from(event);
+        final corners = List<double>.from(data['corners'] ?? []);
+        final frameWidth = (data['frameWidth'] ?? 0).toInt();
+        final frameHeight = (data['frameHeight'] ?? 0).toInt();
+        return EdgeDetectionData(corners, frameWidth, frameHeight);
+      });
 
   /// Start the native camera preview with edge detection.
   static Future<void> startCamera() async {
@@ -34,6 +39,14 @@ class ScannerBridge {
       throw UnsupportedError('ScannerBridge is only available on Android');
     }
     await _methodChannel.invokeMethod('stopCamera');
+  }
+
+  /// Set flash torch on or off.
+  static Future<void> setFlash(bool enabled) async {
+    if (!Platform.isAndroid) {
+      throw UnsupportedError('ScannerBridge is only available on Android');
+    }
+    await _methodChannel.invokeMethod('setFlash', {'enabled': enabled});
   }
 
   /// Capture a document with perspective correction.
@@ -123,4 +136,13 @@ extension EnhancementModeExtension on EnhancementMode {
         return 'whiteboard';
     }
   }
+}
+
+/// Data class holding edge detection results from native side.
+class EdgeDetectionData {
+  final List<double> corners;
+  final int frameWidth;
+  final int frameHeight;
+
+  EdgeDetectionData(this.corners, this.frameWidth, this.frameHeight);
 }

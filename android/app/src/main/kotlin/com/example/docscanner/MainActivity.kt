@@ -67,6 +67,7 @@ class MainActivity : FlutterActivity() {
     private var scannerEngine: ScannerEngine? = null
     private var edgeEventSink: EventChannel.EventSink? = null
     private var previewView: PreviewView? = null
+    private var hasFlashTorch: Boolean = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -91,6 +92,10 @@ class MainActivity : FlutterActivity() {
                     "stopCamera" -> {
                         stopCamera()
                         result.success(null)
+                    }
+                    "setFlash" -> {
+                        val enabled = call.argument<Boolean>("enabled") ?: false
+                        setFlash(enabled, result)
                     }
                     "captureDocument" -> {
                         val corners = call.argument<List<Double>>("corners") ?: emptyList()
@@ -161,10 +166,16 @@ class MainActivity : FlutterActivity() {
             
             scannerEngine?.startCamera(currentPreviewView)
 
-            // Setup edge detection callback to stream to Flutter
-            scannerEngine?.onEdgeDetected = { corners ->
+            // Setup edge detection callback to stream to Flutter with frame dimensions
+            scannerEngine?.onEdgeDetected = { corners, frameWidth, frameHeight ->
                 runOnUiThread {
-                    edgeEventSink?.success(corners)
+                    // Send as map with corners and frame dimensions
+                    val data = mapOf(
+                        "corners" to corners,
+                        "frameWidth" to frameWidth,
+                        "frameHeight" to frameHeight
+                    )
+                    edgeEventSink?.success(data)
                 }
             }
 
@@ -181,6 +192,18 @@ class MainActivity : FlutterActivity() {
             scannerEngine?.stopCamera()
             previewView?.let {
                 // Don't remove the view, just stop camera
+            }
+        }
+    }
+
+    private fun setFlash(enabled: Boolean, result: MethodChannel.Result) {
+        runOnUiThread {
+            try {
+                scannerEngine?.setFlashTorch(enabled)
+                hasFlashTorch = enabled
+                result.success(null)
+            } catch (e: Exception) {
+                result.error("FLASH_ERROR", e.message, null)
             }
         }
     }

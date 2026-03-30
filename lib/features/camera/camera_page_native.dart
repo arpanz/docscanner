@@ -32,6 +32,8 @@ class CameraPageNative extends ConsumerStatefulWidget {
 
 class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
   List<double> _corners = [];
+  int _frameWidth = 1920;
+  int _frameHeight = 1080;
   bool _isCameraReady = false;
   bool _isProcessing = false;
   String? _error;
@@ -83,9 +85,11 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
     super.dispose();
   }
 
-  void _onCornerDetected(List<double> corners) {
+  void _onCornerDetected(List<double> corners, int frameWidth, int frameHeight) {
     setState(() {
       _corners = corners;
+      _frameWidth = frameWidth;
+      _frameHeight = frameHeight;
     });
   }
 
@@ -313,6 +317,8 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
               child: CustomPaint(
                 painter: DocumentEdgeOverlayPainter(
                   corners: _corners,
+                  frameWidth: _frameWidth,
+                  frameHeight: _frameHeight,
                   color: _getOverlayColor(),
                 ),
               ),
@@ -345,7 +351,7 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
                             setState(() {
                               _flashOn = !_flashOn;
                             });
-                            // TODO: Implement flash control via native bridge
+                            ScannerBridge.setFlash(_flashOn);
                           },
                         ),
                         // Gallery import
