@@ -32,9 +32,9 @@ class _DocSearchBarState extends State<DocSearchBar> {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Container(
         decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest.withOpacity(0.5),
+          color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: cs.outlineVariant.withOpacity(0.5)),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
         ),
         child: TextField(
           controller: _ctrl,

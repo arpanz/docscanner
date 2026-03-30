@@ -173,7 +173,7 @@ class _CameraPageIosState extends ConsumerState<CameraPageIos> {
       context: context,
       barrierDismissible: true,
       builder: (ctx) => AlertDialog(
-        title: const Text('Name your document'),
+        title: Text('Name your document', style: const TextStyle(fontWeight: FontWeight.w800)),
         content: TextField(
           controller: ctrl,
           autofocus: true,

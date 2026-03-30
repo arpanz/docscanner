@@ -26,10 +26,10 @@ class SortBar extends ConsumerWidget {
               label: Text(opt.label, style: const TextStyle(fontSize: 12)),
               selected: selected,
               showCheckmark: true,
-              backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
+              backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
               selectedColor: theme.colorScheme.primaryContainer,
               side: BorderSide(
-                color: selected ? theme.colorScheme.primary.withOpacity(0.5) : theme.colorScheme.outlineVariant.withOpacity(0.5),
+                color: selected ? theme.colorScheme.primary.withValues(alpha: 0.5) : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
                 width: 1,
               ),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),

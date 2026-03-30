@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../core/constants.dart';
 import '../../core/utils.dart';
 import '../../core/router.dart';
@@ -15,7 +16,7 @@ import '../../shared/services/scanner_bridge.dart';
 import 'widgets/native_camera_preview.dart';
 
 /// Native camera page for Android using CameraX + OpenCV.
-/// 
+///
 /// Features:
 /// - Live edge detection overlay
 /// - Custom capture button
@@ -36,6 +37,7 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
   int _frameHeight = 1080;
   bool _isCameraReady = false;
   bool _isProcessing = false;
+  bool _buttonPressed = false;
   String? _error;
   bool _flashOn = false;
   final List<String> _capturedImages = [];
@@ -62,7 +64,9 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(
-            content: const Text('Camera permission is required to scan documents'),
+            content: const Text(
+              'Camera permission is required to scan documents',
+            ),
             behavior: SnackBarBehavior.floating,
             action: SnackBarAction(
               label: 'Open Settings',
@@ -85,7 +89,11 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
     super.dispose();
   }
 
-  void _onCornerDetected(List<double> corners, int frameWidth, int frameHeight) {
+  void _onCornerDetected(
+    List<double> corners,
+    int frameWidth,
+    int frameHeight,
+  ) {
     setState(() {
       _corners = corners;
       _frameWidth = frameWidth;
@@ -150,11 +158,7 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
         _isProcessing = false;
       });
       if (mounted) {
-        showSnackBar(
-          context,
-          'Capture failed: ${e.toString()}',
-          isError: true,
-        );
+        showSnackBar(context, 'Capture failed: ${e.toString()}', isError: true);
       }
     }
   }
@@ -164,10 +168,7 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('${_capturedImages.length} page(s) captured'),
-        action: SnackBarAction(
-          label: 'Done',
-          onPressed: _finishScanning,
-        ),
+        action: SnackBarAction(label: 'Done', onPressed: _finishScanning),
         duration: const Duration(seconds: 3),
       ),
     );
@@ -205,11 +206,7 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(
-          context,
-          'Failed to save document: $e',
-          isError: true,
-        );
+        showSnackBar(context, 'Failed to save document: $e', isError: true);
       }
     }
   }
@@ -272,7 +269,7 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
       context: context,
       barrierDismissible: true,
       builder: (ctx) => AlertDialog(
-        title: const Text('Name your document'),
+        title: Text('Name your document', style: const TextStyle(fontWeight: FontWeight.w800)),
         content: TextField(
           controller: ctrl,
           autofocus: true,
@@ -294,6 +291,19 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
       ),
     );
     return result ?? title;
+  }
+
+  Widget _cameraIconButton({
+    required Widget icon,
+    required VoidCallback? onPressed,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.40),
+        shape: BoxShape.circle,
+      ),
+      child: IconButton(onPressed: onPressed, icon: icon),
+    );
   }
 
   @override
@@ -319,7 +329,43 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
                   corners: _corners,
                   frameWidth: _frameWidth,
                   frameHeight: _frameHeight,
+                  strokeWidth: 2.5,
                   color: _getOverlayColor(),
+                  fillColor: _getOverlayColor().withValues(alpha: 0.10),
+                ),
+              ),
+            ),
+
+          if (_isCameraReady)
+            Positioned(
+              top: 100,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: AnimatedOpacity(
+                  opacity: _isCameraReady ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 300),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _corners.length >= 8
+                          ? const Color(0xFF5C4BF5).withValues(alpha: 0.88)
+                          : Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Text(
+                      _corners.length >= 8
+                          ? 'Document detected'
+                          : 'Align with a document',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -335,31 +381,44 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    IconButton(
+                    _cameraIconButton(
                       icon: const Icon(Icons.close, color: Colors.white),
                       onPressed: _safePop,
                     ),
-                    Row(
-                      children: [
-                        // Flash toggle
-                        IconButton(
-                          icon: Icon(
-                            _flashOn ? Icons.flash_on : Icons.flash_off,
-                            color: Colors.white,
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.38),
+                        borderRadius: BorderRadius.circular(32),
+                      ),
+                      child: Row(
+                        children: [
+                          // Flash toggle
+                          IconButton(
+                            icon: Icon(
+                              _flashOn ? Icons.flash_on : Icons.flash_off,
+                              color: Colors.white,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _flashOn = !_flashOn;
+                              });
+                              ScannerBridge.setFlash(_flashOn);
+                            },
                           ),
-                          onPressed: () {
-                            setState(() {
-                              _flashOn = !_flashOn;
-                            });
-                            ScannerBridge.setFlash(_flashOn);
-                          },
-                        ),
-                        // Gallery import
-                        IconButton(
-                          icon: const Icon(Icons.photo_library, color: Colors.white),
-                          onPressed: _importFromGallery,
-                        ),
-                      ],
+                          // Gallery import
+                          IconButton(
+                            icon: const Icon(
+                              Icons.photo_library,
+                              color: Colors.white,
+                            ),
+                            onPressed: _importFromGallery,
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -376,13 +435,17 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
+                      Icon(
+                        Icons.error_outline,
+                        size: 64,
+                        color: Colors.red[300],
+                      ),
                       const SizedBox(height: 16),
                       Text(
                         'Camera Error',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: Colors.white,
-                        ),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.titleLarge?.copyWith(color: Colors.white),
                       ),
                       const SizedBox(height: 8),
                       Padding(
@@ -390,9 +453,8 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
                         child: Text(
                           _error!,
                           textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Colors.white70,
-                          ),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: Colors.white70),
                         ),
                       ),
                       const SizedBox(height: 24),
@@ -461,9 +523,7 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
                     // Capture button
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _buildCaptureButton(),
-                      ],
+                      children: [_buildCaptureButton()],
                     ),
                   ],
                 ),
@@ -485,22 +545,40 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
 
   Widget _buildCaptureButton() {
     return GestureDetector(
-      onTap: _isProcessing ? null : _capture,
-      child: Container(
-        width: 72,
-        height: 72,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 4),
-          color: Colors.transparent,
-        ),
-        child: Center(
-          child: Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: _isProcessing ? Colors.grey : Colors.white,
+      onTapDown: (_) {
+        if (_isProcessing) return;
+        HapticFeedback.selectionClick();
+        setState(() => _buttonPressed = true);
+      },
+      onTapUp: (_) {
+        if (_isProcessing) return;
+        setState(() => _buttonPressed = false);
+        _capture();
+      },
+      onTapCancel: () {
+        if (!mounted) return;
+        setState(() => _buttonPressed = false);
+      },
+      child: AnimatedScale(
+        scale: _buttonPressed ? 0.88 : 1.0,
+        duration: const Duration(milliseconds: 90),
+        curve: Curves.easeOut,
+        child: Container(
+          width: 72,
+          height: 72,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 4),
+            color: Colors.transparent,
+          ),
+          child: Center(
+            child: Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _isProcessing ? Colors.grey : Colors.white,
+              ),
             ),
           ),
         ),
@@ -509,18 +587,18 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
   }
 
   Color _getOverlayColor() {
-    // Change color based on detection confidence
-    if (_corners.isEmpty) return Colors.red;
-    if (_corners.length < 8) return Colors.orange;
-    return const Color(0xFF00FF00); // Green when document detected
+    if (_corners.isEmpty || _corners.length < 8) {
+      return Colors.white.withValues(alpha: 0.55); // soft white = searching
+    }
+    return const Color(0xFF5C4BF5); // brand indigo = locked on
   }
 
   Future<void> _importFromGallery() async {
-    // TODO: Implement gallery import using image_picker
-    if (!mounted) return;
-    showSnackBar(
-      context,
-      'Gallery import coming soon',
-    );
+    final picker = ImagePicker();
+    final images = await picker.pickMultiImage(imageQuality: 90);
+    if (images.isEmpty || !mounted) return;
+    final paths = images.map((x) => x.path).toList();
+    setState(() => _capturedImages.addAll(paths));
+    _showContinueScanningSnackbar();
   }
 }

@@ -7,6 +7,8 @@ import 'package:docscanner/app.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 200 << 20; // 200 MB
+  PaintingBinding.instance.imageCache.maximumSize = 200;
 
   // Only clean up scan_append_* temp files — NOT the whole temp dir.
   // Wiping everything would delete the pdf_thumbnails cache and any

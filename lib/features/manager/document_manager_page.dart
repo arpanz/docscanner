@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/app_prefs.dart';
 import '../../core/router.dart';
@@ -46,6 +47,9 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
+      ),
       builder: (ctx) => _OnboardingSheet(
         onScan: () {
           Navigator.pop(ctx);
@@ -204,58 +208,101 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
                           itemCount: docs.length,
                           itemBuilder: (ctx, i) {
                             final doc = docs[i];
-                            return ListTile(
-                              minVerticalPadding: 12,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                              ),
-                              leading: SizedBox(
-                                width: 56,
-                                height: 64,
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: doc.coverImagePath != null
-                                      ? Image.file(
-                                          File(doc.coverImagePath!),
-                                          fit: BoxFit.cover,
-                                          errorBuilder:
-                                              (
-                                                context,
-                                                error,
-                                                stackTrace,
-                                              ) => Container(
-                                                color: cs.primary.withOpacity(
-                                                  0.1,
-                                                ),
-                                                child: Icon(
-                                                  Icons.description_outlined,
-                                                  color: cs.primary,
-                                                ),
+                            final cs = Theme.of(ctx).colorScheme;
+                            final tt = Theme.of(ctx).textTheme;
+                            final pageLabel =
+                                '${doc.imageCount} ${doc.imageCount == 1 ? 'page' : 'pages'}';
+
+                            Widget coverWidget = doc.coverImagePath != null
+                                ? Image.file(
+                                    File(doc.coverImagePath!),
+                                    fit: BoxFit.cover,
+                                    errorBuilder:
+                                        (context, error, stackTrace) =>
+                                            Container(
+                                              color: cs.primary.withValues(
+                                                alpha: 0.1,
                                               ),
-                                        )
-                                      : Container(
-                                          color: cs.primary.withOpacity(0.1),
-                                          child: Icon(
-                                            Icons.description_outlined,
-                                            color: cs.primary,
+                                              child: Icon(
+                                                Icons.description_outlined,
+                                                color: cs.primary,
+                                              ),
+                                            ),
+                                  )
+                                : Container(
+                                    color: cs.primary.withValues(alpha: 0.1),
+                                    child: Icon(
+                                      Icons.description_outlined,
+                                      color: cs.primary,
+                                    ),
+                                  );
+
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: Material(
+                                color: cs.surfaceContainerLow,
+                                borderRadius: BorderRadius.circular(18),
+                                clipBehavior: Clip.antiAlias,
+                                child: InkWell(
+                                  onTap: () => context.push(
+                                    AppRoutes.folderPath(doc.id),
+                                  ),
+                                  onLongPress: () =>
+                                      _showDocOptions(context, ref, doc),
+                                  borderRadius: BorderRadius.circular(18),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Row(
+                                      children: [
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          child: SizedBox(
+                                            width: 72,
+                                            height: 88,
+                                            child: coverWidget,
                                           ),
                                         ),
+                                        const SizedBox(width: 14),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                doc.title,
+                                                style: tt.titleSmall?.copyWith(
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 6),
+                                              Text(
+                                                pageLabel,
+                                                style: tt.bodySmall?.copyWith(
+                                                  color: cs.onSurfaceVariant,
+                                                ),
+                                              ),
+                                              Text(
+                                                formatDate(doc.updatedAt),
+                                                style: tt.labelSmall?.copyWith(
+                                                  color: cs.onSurfaceVariant,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        if (doc.isFavourite)
+                                          Icon(
+                                            Icons.favorite_rounded,
+                                            size: 16,
+                                            color: cs.error,
+                                          ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
                               ),
-                              title: Text(
-                                doc.title,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              subtitle: Text(
-                                '${doc.imageCount} ${doc.imageCount == 1 ? 'page' : 'pages'} · ${formatBytes(doc.folderSizeBytes)}',
-                              ),
-                              trailing: const Icon(Icons.chevron_right),
-                              onTap: () =>
-                                  context.push(AppRoutes.folderPath(doc.id)),
-                              onLongPress: () =>
-                                  _showDocOptions(context, ref, doc),
                             );
                           },
                         ),
@@ -284,7 +331,12 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
               ),
             ),
             const SizedBox(width: 12),
-            _GradientFAB(onPressed: () => context.push(AppRoutes.camera)),
+            _GradientFAB(
+              onPressed: () {
+                HapticFeedback.mediumImpact();
+                context.push(AppRoutes.camera);
+              },
+            ),
           ],
         ),
       ),
@@ -324,7 +376,10 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
     final title = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Name your document'),
+        title: Text(
+          'Name your document',
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
         content: TextField(controller: ctrl, autofocus: true),
         actions: [
           TextButton(
@@ -343,19 +398,7 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => const AlertDialog(
-        content: Row(
-          children: [
-            SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2.4),
-            ),
-            SizedBox(width: 12),
-            Expanded(child: Text('Saving document...')),
-          ],
-        ),
-      ),
+      builder: (_) => const AppProgressOverlay(message: 'Saving document...'),
     );
 
     try {
@@ -387,15 +430,46 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+              leading: Icon(Platform.isIOS ? Icons.ios_share : Icons.share),
+              title: Text(
+                'Share as PDF',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              onTap: () async {
+                Navigator.pop(sheetCtx);
+                if (doc.pdfPath != null && File(doc.pdfPath!).existsSync()) {
+                  await SharePlus.instance.share(
+                    ShareParams(
+                      files: [XFile(doc.pdfPath!, mimeType: 'application/pdf')],
+                      subject: doc.title,
+                    ),
+                  );
+                } else {
+                  if (context.mounted) {
+                    showSnackBar(
+                      context,
+                      'No PDF yet — open the document to create one.',
+                    );
+                  }
+                }
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.drive_file_rename_outline),
-              title: const Text('Rename'),
+              title: Text(
+                'Rename',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
               onTap: () async {
                 Navigator.pop(sheetCtx);
                 final ctrl = TextEditingController(text: doc.title);
                 final name = await showDialog<String>(
                   context: context,
                   builder: (d) => AlertDialog(
-                    title: const Text('Rename document'),
+                    title: Text(
+                      'Rename document',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
                     content: TextField(controller: ctrl, autofocus: true),
                     actions: [
                       TextButton(
@@ -447,7 +521,10 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
                 final ok = await showDialog<bool>(
                   context: context,
                   builder: (ctx) => AlertDialog(
-                    title: const Text('Delete document?'),
+                    title: Text(
+                      'Delete document?',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
                     content: Text(
                       'Delete "${doc.title}"? This cannot be undone.',
                     ),
@@ -515,7 +592,7 @@ class _GradientFAB extends StatelessWidget {
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
-            color: cs.primary.withOpacity(0.35),
+            color: cs.primary.withValues(alpha: 0.35),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -578,8 +655,8 @@ class _OnboardingSheet extends StatelessWidget {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    cs.primary.withOpacity(0.14),
-                    cs.tertiary.withOpacity(0.16),
+                    cs.primary.withValues(alpha: 0.14),
+                    cs.tertiary.withValues(alpha: 0.16),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,

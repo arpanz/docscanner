@@ -35,22 +35,40 @@ class DocCard extends StatelessWidget {
       onLongPress: onLongPress,
       child: Hero(
         tag: tag,
+        flightShuttleBuilder: (_, animation, __, ___, ____) {
+          final coverPath = document.coverImagePath;
+          Widget imageWidget = const SizedBox.shrink();
+          if (coverPath != null) {
+            if (coverPath.toLowerCase().endsWith('.pdf')) {
+              imageWidget = _PdfThumbnail(path: coverPath);
+            } else {
+              imageWidget = Image.file(File(coverPath), fit: BoxFit.cover);
+            }
+          }
+          return AnimatedBuilder(
+            animation: animation,
+            builder: (ctx, _) => ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: imageWidget,
+            ),
+          );
+        },
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
             color: cs.surfaceContainerLow,
             border: Border.all(
-              color: cs.outlineVariant.withOpacity(0.4),
+              color: cs.outlineVariant.withValues(alpha: 0.4),
               width: 1,
             ),
             boxShadow: [
               BoxShadow(
-                color: cs.shadow.withOpacity(0.05),
+                color: cs.shadow.withValues(alpha: 0.05),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               ),
               BoxShadow(
-                color: cs.primary.withOpacity(0.08),
+                color: cs.primary.withValues(alpha: 0.08),
                 blurRadius: 24,
                 offset: const Offset(0, 8),
               ),
@@ -66,29 +84,31 @@ class DocCard extends StatelessWidget {
                     fit: StackFit.expand,
                     children: [
                       document.coverImagePath != null
-                          ? (document.coverImagePath!.toLowerCase().endsWith('.pdf')
-                              ? _PdfThumbnail(path: document.coverImagePath!)
-                              : Image.file(
-                                  File(document.coverImagePath!),
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (ctx, err, _) => Container(
-                                    color: cs.surfaceContainerHigh,
-                                    child: Center(
-                                      child: Icon(
-                                        Icons.broken_image_outlined,
-                                        color: cs.onSurfaceVariant,
+                          ? (document.coverImagePath!.toLowerCase().endsWith(
+                                  '.pdf',
+                                )
+                                ? _PdfThumbnail(path: document.coverImagePath!)
+                                : Image.file(
+                                    File(document.coverImagePath!),
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (ctx, err, _) => Container(
+                                      color: cs.surfaceContainerHigh,
+                                      child: Center(
+                                        child: Icon(
+                                          Icons.broken_image_outlined,
+                                          color: cs.onSurfaceVariant,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                ))
+                                  ))
                           : Container(
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
                                   colors: [
-                                    cs.primary.withOpacity(0.18),
-                                    cs.secondary.withOpacity(0.12),
+                                    cs.primary.withValues(alpha: 0.18),
+                                    cs.secondary.withValues(alpha: 0.12),
                                   ],
                                 ),
                               ),
@@ -98,7 +118,7 @@ class DocCard extends StatelessWidget {
                                   style: TextStyle(
                                     fontSize: 40,
                                     fontWeight: FontWeight.w800,
-                                    color: cs.primary.withOpacity(0.35),
+                                    color: cs.primary.withValues(alpha: 0.35),
                                   ),
                                 ),
                               ),
@@ -115,7 +135,7 @@ class DocCard extends StatelessWidget {
                               end: Alignment.bottomCenter,
                               colors: [
                                 Colors.transparent,
-                                cs.scrim.withOpacity(0.4),
+                                cs.scrim.withValues(alpha: 0.4),
                               ],
                             ),
                           ),
@@ -132,7 +152,7 @@ class DocCard extends StatelessWidget {
                                 margin: const EdgeInsets.only(right: 6),
                                 padding: const EdgeInsets.all(4),
                                 decoration: BoxDecoration(
-                                  color: cs.error.withOpacity(0.88),
+                                  color: cs.error.withValues(alpha: 0.88),
                                   shape: BoxShape.circle,
                                 ),
                                 child: const Icon(
@@ -147,7 +167,7 @@ class DocCard extends StatelessWidget {
                                 vertical: 3,
                               ),
                               decoration: BoxDecoration(
-                                color: cs.scrim.withOpacity(0.62),
+                                color: cs.scrim.withValues(alpha: 0.62),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Row(
@@ -221,7 +241,7 @@ class _DocCardFooter extends StatelessWidget {
     return Text(
       '$pageLabel · $sizeStr',
       style: tt.labelSmall?.copyWith(
-        color: cs.onSurface.withOpacity(0.6),
+        color: cs.onSurface.withValues(alpha: 0.6),
         fontWeight: FontWeight.w500,
         letterSpacing: 0.1,
       ),
@@ -253,7 +273,19 @@ class _PdfThumbnailState extends State<_PdfThumbnail> {
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator.adaptive());
+          final cs = Theme.of(context).colorScheme;
+          return Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  cs.surfaceContainerLow,
+                  cs.surfaceContainer,
+                  cs.surfaceContainerLow,
+                ],
+                stops: const [0.0, 0.5, 1.0],
+              ),
+            ),
+          );
         }
         if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
           return Container(
@@ -289,7 +321,11 @@ class _PdfThumbnailState extends State<_PdfThumbnail> {
       }
 
       final bytes = await File(widget.path).readAsBytes();
-      final rasters = await Printing.raster(bytes, pages: [0], dpi: 72).toList();
+      final rasters = await Printing.raster(
+        bytes,
+        pages: [0],
+        dpi: 144,
+      ).toList();
       if (rasters.isNotEmpty) {
         final pngBytes = await rasters.first.toPng();
         if (!await thumbDir.exists()) {

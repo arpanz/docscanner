@@ -7,7 +7,8 @@ import 'package:intl/intl.dart';
 // Date helpers
 // ---------------------------------------------------------------------------
 String formatDate(DateTime dt) => DateFormat('MMM d, yyyy').format(dt);
-String formatDateTime(DateTime dt) => DateFormat('MMM d, yyyy • h:mm a').format(dt);
+String formatDateTime(DateTime dt) =>
+    DateFormat('MMM d, yyyy • h:mm a').format(dt);
 
 /// Returns a human-friendly relative label: "Today", "Yesterday", or a date string.
 String relativeDate(DateTime dt) {
@@ -78,17 +79,22 @@ String initials(String title) {
 // ---------------------------------------------------------------------------
 // UI helpers
 // ---------------------------------------------------------------------------
-void showSnackBar(BuildContext context, String message, {bool isError = false}) {
+void showSnackBar(
+  BuildContext context,
+  String message, {
+  bool isError = false,
+}) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: isError
-            ? Theme.of(context).colorScheme.error
-            : null,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        backgroundColor: isError
+            ? Theme.of(context).colorScheme.errorContainer
+            : null,
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       ),
     );
 }
@@ -141,4 +147,37 @@ Future<bool> confirmDialog(
     ),
   );
   return result ?? false;
+}
+
+class AppProgressOverlay extends StatelessWidget {
+  final String message;
+  const AppProgressOverlay({super.key, required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: Colors.black.withValues(alpha: 0.45),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2.4),
+              ),
+              const SizedBox(width: 14),
+              Material(type: MaterialType.transparency, child: Text(message)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

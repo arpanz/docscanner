@@ -18,12 +18,10 @@ class DocumentViewerPage extends ConsumerStatefulWidget {
   final int docId;
 
   @override
-  ConsumerState<DocumentViewerPage> createState() =>
-      _DocumentViewerPageState();
+  ConsumerState<DocumentViewerPage> createState() => _DocumentViewerPageState();
 }
 
-class _DocumentViewerPageState
-    extends ConsumerState<DocumentViewerPage> {
+class _DocumentViewerPageState extends ConsumerState<DocumentViewerPage> {
   bool _redirected = false;
 
   @override
@@ -32,8 +30,7 @@ class _DocumentViewerPageState
 
     return docAsync.when(
       loading: () => const Scaffold(body: AppLoading()),
-      error: (e, _) =>
-          Scaffold(body: Center(child: Text('Error: $e'))),
+      error: (e, _) => Scaffold(body: Center(child: Text('Error: $e'))),
       data: (doc) {
         if (doc == null) {
           return Scaffold(
@@ -55,8 +52,7 @@ class _DocumentViewerPageState
           _redirected = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
-              context.replace(
-                  AppRoutes.folderPath(widget.docId));
+              context.replace(AppRoutes.folderPath(widget.docId));
             }
           });
         }
@@ -71,14 +67,12 @@ class _DocumentViewerPageState
 // does not re-read the file on every build callback.
 // ---------------------------------------------------------------------------
 class _PdfViewerScaffold extends StatefulWidget {
-  const _PdfViewerScaffold(
-      {required this.doc, required this.pdfPath});
+  const _PdfViewerScaffold({required this.doc, required this.pdfPath});
   final Document doc;
   final String pdfPath;
 
   @override
-  State<_PdfViewerScaffold> createState() =>
-      _PdfViewerScaffoldState();
+  State<_PdfViewerScaffold> createState() => _PdfViewerScaffoldState();
 }
 
 class _PdfViewerScaffoldState extends State<_PdfViewerScaffold> {
@@ -107,8 +101,11 @@ class _PdfViewerScaffoldState extends State<_PdfViewerScaffold> {
       appBar: AppBar(
         backgroundColor: cs.surface,
         foregroundColor: cs.onSurface,
+        scrolledUnderElevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+          icon: Icon(
+            Platform.isIOS ? Icons.arrow_back_ios_new : Icons.arrow_back,
+          ),
           onPressed: () {
             if (context.canPop()) {
               context.pop();
@@ -124,10 +121,7 @@ class _PdfViewerScaffoldState extends State<_PdfViewerScaffold> {
             onPressed: () async {
               await SharePlus.instance.share(
                 ShareParams(
-                  files: [
-                    XFile(widget.pdfPath,
-                        mimeType: 'application/pdf'),
-                  ],
+                  files: [XFile(widget.pdfPath, mimeType: 'application/pdf')],
                   subject: widget.doc.title,
                 ),
               );
@@ -137,19 +131,22 @@ class _PdfViewerScaffoldState extends State<_PdfViewerScaffold> {
       ),
       body: _loadError != null
           ? Center(
-              child: Text('Failed to load PDF: $_loadError',
-                  style: TextStyle(color: cs.error)))
+              child: Text(
+                'Failed to load PDF: $_loadError',
+                style: TextStyle(color: cs.error),
+              ),
+            )
           : _pdfBytes == null
-              ? const AppLoading()
-              : PdfPreview(
-                  // Fix: supply cached bytes — avoids re-reading file
-                  // on every PdfPreview build callback.
-                  build: (format) async => _pdfBytes!,
-                  useActions: false,
-                  canChangeOrientation: false,
-                  canChangePageFormat: false,
-                  canDebug: false,
-                ),
+          ? const AppLoading()
+          : PdfPreview(
+              // Fix: supply cached bytes — avoids re-reading file
+              // on every PdfPreview build callback.
+              build: (format) async => _pdfBytes!,
+              useActions: false,
+              canChangeOrientation: false,
+              canChangePageFormat: false,
+              canDebug: false,
+            ),
     );
   }
 }

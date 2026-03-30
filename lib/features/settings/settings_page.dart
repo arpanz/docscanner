@@ -34,7 +34,7 @@ class SettingsPage extends ConsumerWidget {
                       ? Icons.light_mode_outlined
                       : Icons.brightness_auto_outlined,
             ),
-            title: const Text('Theme'),
+            title: Text('Theme', style: const TextStyle(fontWeight: FontWeight.w800)),
             subtitle: Text(
               themeMode == ThemeMode.dark
                   ? 'Dark'
@@ -47,7 +47,7 @@ class SettingsPage extends ConsumerWidget {
           ),
           ListTile(
             leading: const Icon(Icons.picture_as_pdf_outlined),
-            title: const Text('Default PDF page size'),
+            title: Text('Default PDF page size', style: const TextStyle(fontWeight: FontWeight.w800)),
             subtitle: Text(pageSize.label),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _showPageSizeDialog(context, ref, pageSize),
@@ -56,8 +56,8 @@ class SettingsPage extends ConsumerWidget {
           const _SectionHeader('Storage'),
           ListTile(
             leading: const Icon(Icons.folder_outlined),
-            title: const Text('Clear app cache'),
-            subtitle: const Text('Removes generated thumbnails and temporary edit files'),
+            title: Text('Clear app cache', style: const TextStyle(fontWeight: FontWeight.w800)),
+            subtitle: Text('Removes generated thumbnails and temporary edit files', style: const TextStyle(fontWeight: FontWeight.w800)),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _clearCache(context),
           ),
@@ -69,7 +69,7 @@ class SettingsPage extends ConsumerWidget {
               final version = snapshot.data?.version ?? '...';
               return ListTile(
                 leading: const Icon(Icons.info_outline),
-                title: const Text('Version'),
+                title: Text('Version', style: const TextStyle(fontWeight: FontWeight.w800)),
                 trailing: Text(
                   version,
                   style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
@@ -92,13 +92,13 @@ class SettingsPage extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Select Theme'),
+        title: Text('Select Theme', style: const TextStyle(fontWeight: FontWeight.w800)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             RadioListTile<ThemeMode>(
-              title: const Text('System default'),
-              subtitle: const Text('Follow device theme'),
+              title: Text('System default', style: const TextStyle(fontWeight: FontWeight.w800)),
+              subtitle: Text('Follow device theme', style: const TextStyle(fontWeight: FontWeight.w800)),
               value: ThemeMode.system,
               groupValue: current,
               onChanged: (value) {
@@ -109,7 +109,7 @@ class SettingsPage extends ConsumerWidget {
               },
             ),
             RadioListTile<ThemeMode>(
-              title: const Text('Light'),
+              title: Text('Light', style: const TextStyle(fontWeight: FontWeight.w800)),
               value: ThemeMode.light,
               groupValue: current,
               onChanged: (value) {
@@ -120,7 +120,7 @@ class SettingsPage extends ConsumerWidget {
               },
             ),
             RadioListTile<ThemeMode>(
-              title: const Text('Dark'),
+              title: Text('Dark', style: const TextStyle(fontWeight: FontWeight.w800)),
               value: ThemeMode.dark,
               groupValue: current,
               onChanged: (value) {
@@ -150,7 +150,7 @@ class SettingsPage extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('PDF page size'),
+        title: Text('PDF page size', style: const TextStyle(fontWeight: FontWeight.w800)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: PdfPageSizeOption.values.map((option) {
