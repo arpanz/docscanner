@@ -60,8 +60,7 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
     _countdownCtrl = AnimationController(
       vsync: this,
       duration: Duration(
-        milliseconds:
-            (kAutoCaptureLockFrames * (1000 / 30)).round(), // ~30 fps
+        milliseconds: (kAutoCaptureLockFrames * (1000 / 30)).round(), // ~30 fps
       ),
     );
     WidgetsBinding.instance.addPostFrameCallback(
@@ -416,7 +415,7 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
             Positioned.fill(
               child: AnimatedBuilder(
                 animation: _countdownCtrl,
-                builder: (_, __) => CustomPaint(
+                builder: (_, _) => CustomPaint(
                   painter: DocumentEdgeOverlayPainter(
                     corners: _corners,
                     frameWidth: _frameWidth,
@@ -457,8 +456,8 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
                     child: Text(
                       _corners.length >= 8
                           ? (_autoCaptureEnabled
-                              ? 'Hold still…'
-                              : 'Document detected')
+                                ? 'Hold still…'
+                                : 'Document detected')
                           : 'Align with a document',
                       style: const TextStyle(
                         color: Colors.white,
@@ -553,14 +552,17 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
+                      Icon(
+                        Icons.error_outline,
+                        size: 64,
+                        color: Colors.red[300],
+                      ),
                       const SizedBox(height: 16),
                       Text(
                         'Camera Error',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleLarge
-                            ?.copyWith(color: Colors.white),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.titleLarge?.copyWith(color: Colors.white),
                       ),
                       const SizedBox(height: 8),
                       Padding(
@@ -568,9 +570,7 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
                         child: Text(
                           _error!,
                           textAlign: TextAlign.center,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
+                          style: Theme.of(context).textTheme.bodyMedium
                               ?.copyWith(color: Colors.white70),
                         ),
                       ),

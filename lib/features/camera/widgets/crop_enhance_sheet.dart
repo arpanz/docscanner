@@ -1,6 +1,7 @@
 // lib/features/camera/widgets/crop_enhance_sheet.dart
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
@@ -16,18 +17,18 @@ enum FilterMode {
   blackwhite;
 
   String get label => switch (this) {
-        original => 'Original',
-        grayscale => 'Gray',
-        enhance => 'Enhance',
-        blackwhite => 'B&W',
-      };
+    original => 'Original',
+    grayscale => 'Gray',
+    enhance => 'Enhance',
+    blackwhite => 'B&W',
+  };
 
   IconData get icon => switch (this) {
-        original => Icons.image_outlined,
-        grayscale => Icons.gradient,
-        enhance => Icons.auto_fix_high,
-        blackwhite => Icons.contrast,
-      };
+    original => Icons.image_outlined,
+    grayscale => Icons.gradient,
+    enhance => Icons.auto_fix_high,
+    blackwhite => Icons.contrast,
+  };
 }
 
 class ImageEditOptions {
@@ -106,9 +107,13 @@ String applyImageEdits(ImageEditArgs args) {
   }
 
   final turns = args.options.rotationTurns % 4;
-  if (turns == 1) image = img.copyRotate(image, angle: 90);
-  else if (turns == 2) image = img.copyRotate(image, angle: 180);
-  else if (turns == 3) image = img.copyRotate(image, angle: 270);
+  if (turns == 1) {
+    image = img.copyRotate(image, angle: 90);
+  } else if (turns == 2) {
+    image = img.copyRotate(image, angle: 180);
+  } else if (turns == 3) {
+    image = img.copyRotate(image, angle: 270);
+  }
 
   File(args.outputPath).writeAsBytesSync(img.encodeJpg(image, quality: 95));
   return args.outputPath;
@@ -131,10 +136,7 @@ img.Image _threshold(img.Image image, int threshold) {
 
 /// Arguments sent to the thumbnail-generation isolate.
 class _ThumbArgs {
-  const _ThumbArgs({
-    required this.imagePath,
-    required this.targetWidth,
-  });
+  const _ThumbArgs({required this.imagePath, required this.targetWidth});
   final String imagePath;
   final int targetWidth;
 }
@@ -178,10 +180,26 @@ List<double> _matrixForFilter(FilterMode filter) {
   final blue = inverseSaturation * _lumaBlue;
 
   return [
-    contrast * (red + saturation), contrast * green, contrast * blue, 0, offset,
-    contrast * red, contrast * (green + saturation), contrast * blue, 0, offset,
-    contrast * red, contrast * green, contrast * (blue + saturation), 0, offset,
-    0, 0, 0, 1, 0,
+    contrast * (red + saturation),
+    contrast * green,
+    contrast * blue,
+    0,
+    offset,
+    contrast * red,
+    contrast * (green + saturation),
+    contrast * blue,
+    0,
+    offset,
+    contrast * red,
+    contrast * green,
+    contrast * (blue + saturation),
+    0,
+    offset,
+    0,
+    0,
+    0,
+    1,
+    0,
   ];
 }
 
@@ -291,22 +309,23 @@ class _FilterThumbnailStripState extends State<FilterThumbnailStrip> {
                                 ),
                               )
                             : _thumb == null
-                                ? Icon(
-                                    mode.icon,
-                                    color: cs.onSurfaceVariant,
-                                    size: 28,
-                                  )
-                                : ColorFiltered(
-                                    colorFilter: ColorFilter.matrix(
-                                      _matrixForFilter(mode),
-                                    ),
-                                    child: Image.memory(
-                                      img.encodeJpg(_thumb!, quality: 80)
-                                          as dynamic,
-                                      fit: BoxFit.cover,
-                                      gaplessPlayback: true,
-                                    ),
+                            ? Icon(
+                                mode.icon,
+                                color: cs.onSurfaceVariant,
+                                size: 28,
+                              )
+                            : ColorFiltered(
+                                colorFilter: ColorFilter.matrix(
+                                  _matrixForFilter(mode),
+                                ),
+                                child: Image.memory(
+                                  Uint8List.fromList(
+                                    img.encodeJpg(_thumb!, quality: 80),
                                   ),
+                                  fit: BoxFit.cover,
+                                  gaplessPlayback: true,
+                                ),
+                              ),
                       ),
                     ),
                     // Label
@@ -433,8 +452,9 @@ class _ImageEditSheetState extends State<ImageEditSheet> {
                 FilterThumbnailStrip(
                   imagePath: widget.imagePath,
                   selected: _options.filter,
-                  onSelect: (mode) =>
-                      setState(() => _options = _options.copyWith(filter: mode)),
+                  onSelect: (mode) => setState(
+                    () => _options = _options.copyWith(filter: mode),
+                  ),
                 ),
 
                 const SizedBox(height: 20),
@@ -445,8 +465,9 @@ class _ImageEditSheetState extends State<ImageEditSheet> {
                   max: 0.4,
                   divisions: 16,
                   label: '${(_options.brightness * 100).round()}%',
-                  onChanged: (value) =>
-                      setState(() => _options = _options.copyWith(brightness: value)),
+                  onChanged: (value) => setState(
+                    () => _options = _options.copyWith(brightness: value),
+                  ),
                 ),
                 _SliderTile(
                   title: 'Contrast',
@@ -455,8 +476,9 @@ class _ImageEditSheetState extends State<ImageEditSheet> {
                   max: 1.6,
                   divisions: 10,
                   label: _options.contrast.toStringAsFixed(2),
-                  onChanged: (value) =>
-                      setState(() => _options = _options.copyWith(contrast: value)),
+                  onChanged: (value) => setState(
+                    () => _options = _options.copyWith(contrast: value),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -550,10 +572,26 @@ List<double> _previewMatrix(ImageEditOptions options) {
   final blue = inverseSaturation * _lumaBlue;
 
   return [
-    contrast * (red + saturation), contrast * green, contrast * blue, 0, offset,
-    contrast * red, contrast * (green + saturation), contrast * blue, 0, offset,
-    contrast * red, contrast * green, contrast * (blue + saturation), 0, offset,
-    0, 0, 0, 1, 0,
+    contrast * (red + saturation),
+    contrast * green,
+    contrast * blue,
+    0,
+    offset,
+    contrast * red,
+    contrast * (green + saturation),
+    contrast * blue,
+    0,
+    offset,
+    contrast * red,
+    contrast * green,
+    contrast * (blue + saturation),
+    0,
+    offset,
+    0,
+    0,
+    0,
+    1,
+    0,
   ];
 }
 
