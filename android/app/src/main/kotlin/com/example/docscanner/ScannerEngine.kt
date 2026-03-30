@@ -254,21 +254,22 @@ class ScannerEngine(
         val mat = Mat()
         Utils.bitmapToMat(bitmap, mat)
 
+        val gray = Mat()
+        val edges = Mat()
+        val hierarchy = Mat()
+        val contours = ArrayList<MatOfPoint>()
+
         try {
             // Convert to grayscale
-            val gray = Mat()
             Imgproc.cvtColor(mat, gray, Imgproc.COLOR_RGBA2GRAY)
 
             // Apply Gaussian blur to reduce noise
             Imgproc.GaussianBlur(gray, gray, Size(5.0, 5.0), 0.0)
 
             // Edge detection using Canny
-            val edges = Mat()
             Imgproc.Canny(gray, edges, 75.0, 200.0)
 
             // Find contours
-            val contours = ArrayList<MatOfPoint>()
-            val hierarchy = Mat()
             Imgproc.findContours(
                 edges,
                 contours,
@@ -278,18 +279,20 @@ class ScannerEngine(
             )
 
             // Find the largest 4-sided contour (the document)
-            val documentContour = contours
+            return contours
                 .sortedByDescending { Imgproc.contourArea(it) }
                 .firstNotNullOfOrNull { contour ->
                     approxQuad(contour)
                 }
-
-            return documentContour
         } catch (e: Exception) {
             Log.e(TAG, "Edge detection failed", e)
             return null
         } finally {
             mat.release()
+            gray.release()
+            edges.release()
+            hierarchy.release()
+            contours.forEach { it.release() }
         }
     }
 
@@ -305,13 +308,14 @@ class ScannerEngine(
         val peri = Imgproc.arcLength(contour2f, true)
         val approx = MatOfPoint2f()
         Imgproc.approxPolyDP(contour2f, approx, 0.02 * peri, true)
+        contour2f.release()
 
-        if (approx.total() == 4L) {
-            return orderPoints(approx)
+        return if (approx.total() == 4L) {
+            orderPoints(approx)
+        } else {
+            approx.release()
+            null
         }
-
-        approx.release()
-        return null
     }
 
     /**
@@ -343,6 +347,10 @@ class ScannerEngine(
         val mat = Mat()
         Utils.bitmapToMat(bitmap, mat)
 
+        val result = Mat()
+        var dstPoints = MatOfPoint2f()
+        var transform = Mat()
+
         try {
             // Get ordered corner points
             val srcPoints = corners.toArray()
@@ -360,7 +368,8 @@ class ScannerEngine(
             val (outputWidth, outputHeight) = limitSize(maxWidth, maxHeight)
 
             // Destination points (rectangle)
-            val dstPoints = MatOfPoint2f(
+            dstPoints.release()
+            dstPoints = MatOfPoint2f(
                 Point(0.0, 0.0),
                 Point(outputWidth.toDouble(), 0.0),
                 Point(outputWidth.toDouble(), outputHeight.toDouble()),
@@ -368,10 +377,10 @@ class ScannerEngine(
             )
 
             // Get perspective transform matrix
-            val transform = Imgproc.getPerspectiveTransform(corners, dstPoints)
+            transform.release()
+            transform = Imgproc.getPerspectiveTransform(corners, dstPoints)
 
             // Apply warp perspective
-            val result = Mat()
             Imgproc.warpPerspective(
                 mat,
                 result,
@@ -389,6 +398,9 @@ class ScannerEngine(
             throw e
         } finally {
             mat.release()
+            result.release()
+            dstPoints.release()
+            transform.release()
         }
     }
 
