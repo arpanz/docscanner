@@ -19,10 +19,12 @@ import 'widgets/native_camera_preview.dart';
 ///
 /// Features:
 /// - Live edge detection overlay
+/// - Auto-capture when document is stable for [kAutoCaptureLockFrames] frames
 /// - Custom capture button
 /// - Flash toggle
 /// - Gallery import
 /// - Real-time corner tracking
+/// - Manual crop editor after each capture
 class CameraPageNative extends ConsumerStatefulWidget {
   const CameraPageNative({super.key, this.existingDocId});
   final int? existingDocId;
@@ -31,7 +33,8 @@ class CameraPageNative extends ConsumerStatefulWidget {
   ConsumerState<CameraPageNative> createState() => _CameraPageNativeState();
 }
 
-class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
+class _CameraPageNativeState extends ConsumerState<CameraPageNative>
+    with SingleTickerProviderStateMixin {
   List<double> _corners = [];
   int _frameWidth = 1920;
   int _frameHeight = 1080;
@@ -42,12 +45,35 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
   bool _flashOn = false;
   final List<String> _capturedImages = [];
 
+  // Auto-capture state
+  bool _autoCaptureEnabled = true;
+  int _stableFrameCount = 0;
+  List<double> _previousCorners = [];
+  bool _autoCaptureTriggered = false;
+
+  // Countdown animation for auto-capture
+  late AnimationController _countdownCtrl;
+
   @override
   void initState() {
     super.initState();
+    _countdownCtrl = AnimationController(
+      vsync: this,
+      duration: Duration(
+        milliseconds:
+            (kAutoCaptureLockFrames * (1000 / 30)).round(), // ~30 fps
+      ),
+    );
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _requestPermissionsAndStartCamera(),
     );
+  }
+
+  @override
+  void dispose() {
+    _countdownCtrl.dispose();
+    ScannerBridge.stopCamera();
+    super.dispose();
   }
 
   void _safePop() {
@@ -56,7 +82,6 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
 
   Future<void> _requestPermissionsAndStartCamera() async {
     final permissionService = ref.read(permissionServiceProvider);
-
     final hasCamera = await permissionService.requestCamera();
     if (!hasCamera) {
       if (!mounted) return;
@@ -77,17 +102,12 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
       _safePop();
       return;
     }
-
-    if (mounted) {
-      await ScannerBridge.startCamera();
-    }
+    if (mounted) await ScannerBridge.startCamera();
   }
 
-  @override
-  void dispose() {
-    ScannerBridge.stopCamera();
-    super.dispose();
-  }
+  // ---------------------------------------------------------------------------
+  // Corner update + auto-capture logic
+  // ---------------------------------------------------------------------------
 
   void _onCornerDetected(
     List<double> corners,
@@ -99,6 +119,45 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
       _frameWidth = frameWidth;
       _frameHeight = frameHeight;
     });
+
+    if (!_autoCaptureEnabled || _isProcessing || corners.length < 8) {
+      _resetStability();
+      return;
+    }
+
+    if (_cornersAreStable(corners)) {
+      _stableFrameCount++;
+      if (_stableFrameCount == 1) {
+        _countdownCtrl.forward(from: 0);
+      }
+      if (_stableFrameCount >= kAutoCaptureLockFrames &&
+          !_autoCaptureTriggered) {
+        _autoCaptureTriggered = true;
+        _capture(auto: true);
+      }
+    } else {
+      _resetStability();
+    }
+    _previousCorners = List.from(corners);
+  }
+
+  bool _cornersAreStable(List<double> corners) {
+    if (_previousCorners.length != corners.length) return false;
+    for (var i = 0; i < corners.length; i++) {
+      if ((corners[i] - _previousCorners[i]).abs() > kCornerStableThreshold) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  void _resetStability() {
+    if (_stableFrameCount > 0) {
+      _countdownCtrl.stop();
+      _countdownCtrl.reset();
+    }
+    _stableFrameCount = 0;
+    _autoCaptureTriggered = false;
   }
 
   void _onCameraReady() {
@@ -115,10 +174,14 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
     });
   }
 
-  Future<void> _capture() async {
+  // ---------------------------------------------------------------------------
+  // Capture + manual crop
+  // ---------------------------------------------------------------------------
+
+  Future<void> _capture({bool auto = false}) async {
     if (_isProcessing || !_isCameraReady) return;
     if (_corners.length < 8) {
-      if (mounted) {
+      if (!auto && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('No document detected. Try adjusting the angle.'),
@@ -129,33 +192,62 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
       return;
     }
 
-    setState(() {
-      _isProcessing = true;
-    });
+    setState(() => _isProcessing = true);
+    _resetStability();
 
     try {
-      HapticFeedback.mediumImpact();
+      if (!auto) HapticFeedback.mediumImpact();
 
-      // Capture with perspective correction
-      final imagePath = await ScannerBridge.captureDocument(_corners);
+      // Capture raw (pre-crop) frame from native
+      final rawPath = await ScannerBridge.captureDocument(_corners);
+      if (!mounted) return;
+
+      // Open the manual crop editor so the user can adjust corners
+      final adjustedCorners = await Navigator.of(context).push<List<double>>(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => ManualCropEditor(
+            imagePath: rawPath,
+            initialCorners: List<double>.from(_corners),
+            imageWidth: _frameWidth,
+            imageHeight: _frameHeight,
+          ),
+        ),
+      );
 
       if (!mounted) return;
 
+      // If the user cancelled the crop editor, discard this capture
+      if (adjustedCorners == null) {
+        setState(() {
+          _isProcessing = false;
+          _autoCaptureTriggered = false;
+        });
+        return;
+      }
+
+      // If corners were adjusted, re-run perspective correction with new corners
+      final finalPath = adjustedCorners == _corners
+          ? rawPath
+          : await ScannerBridge.captureDocument(adjustedCorners);
+
       setState(() {
-        _capturedImages.add(imagePath);
+        _capturedImages.add(finalPath);
         _isProcessing = false;
+        _autoCaptureTriggered = false;
       });
 
-      // If we have enough pages or user wants to finish
+      if (auto) HapticFeedback.mediumImpact();
+
       if (_capturedImages.length >= AppConstants.maxPagesPerDocument) {
         await _finishScanning();
       } else {
-        // Show continue scanning snackbar
         _showContinueScanningSnackbar();
       }
     } catch (e) {
       setState(() {
         _isProcessing = false;
+        _autoCaptureTriggered = false;
       });
       if (mounted) {
         showSnackBar(context, 'Capture failed: ${e.toString()}', isError: true);
@@ -185,7 +277,6 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
       return;
     }
 
-    // Prompt for title
     final title = await _promptTitle();
     if (!mounted) return;
 
@@ -199,7 +290,6 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
         title: finalTitle,
         imagePaths: _capturedImages,
       );
-
       if (mounted) {
         HapticFeedback.lightImpact();
         context.pushReplacement(AppRoutes.folderPath(docId));
@@ -215,19 +305,16 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
     final doc = await ref
         .read(documentsDaoProvider)
         .getDocument(widget.existingDocId!);
-
     if (!mounted) return;
     if (doc == null) {
       showSnackBar(context, 'Document not found', isError: true);
       _safePop();
       return;
     }
-
     try {
       final svc = ref.read(documentServiceProvider);
       await svc.addImages(widget.existingDocId!, _capturedImages);
       final pageCount = _capturedImages.length;
-
       if (mounted) {
         showSnackBar(
           context,
@@ -269,7 +356,10 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
       context: context,
       barrierDismissible: true,
       builder: (ctx) => AlertDialog(
-        title: Text('Name your document', style: const TextStyle(fontWeight: FontWeight.w800)),
+        title: const Text(
+          'Name your document',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
         content: TextField(
           controller: ctrl,
           autofocus: true,
@@ -321,21 +411,29 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
             ),
           ),
 
-          // Edge overlay
+          // Edge overlay with auto-capture countdown ring
           if (_corners.isNotEmpty)
             Positioned.fill(
-              child: CustomPaint(
-                painter: DocumentEdgeOverlayPainter(
-                  corners: _corners,
-                  frameWidth: _frameWidth,
-                  frameHeight: _frameHeight,
-                  strokeWidth: 2.5,
-                  color: _getOverlayColor(),
-                  fillColor: _getOverlayColor().withValues(alpha: 0.10),
+              child: AnimatedBuilder(
+                animation: _countdownCtrl,
+                builder: (_, __) => CustomPaint(
+                  painter: DocumentEdgeOverlayPainter(
+                    corners: _corners,
+                    frameWidth: _frameWidth,
+                    frameHeight: _frameHeight,
+                    strokeWidth: 2.5,
+                    color: _getOverlayColor(),
+                    fillColor: _getOverlayColor().withValues(alpha: 0.10),
+                    stableFrameCount: _autoCaptureEnabled
+                        ? _stableFrameCount
+                        : 0,
+                    autoCaptureTotalFrames: kAutoCaptureLockFrames,
+                  ),
                 ),
               ),
             ),
 
+          // Document detection status chip
           if (_isCameraReady)
             Positioned(
               top: 100,
@@ -358,7 +456,9 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
                     ),
                     child: Text(
                       _corners.length >= 8
-                          ? 'Document detected'
+                          ? (_autoCaptureEnabled
+                              ? 'Hold still…'
+                              : 'Document detected')
                           : 'Align with a document',
                       style: const TextStyle(
                         color: Colors.white,
@@ -403,10 +503,28 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
                               color: Colors.white,
                             ),
                             onPressed: () {
-                              setState(() {
-                                _flashOn = !_flashOn;
-                              });
+                              setState(() => _flashOn = !_flashOn);
                               ScannerBridge.setFlash(_flashOn);
+                            },
+                          ),
+                          // Auto-capture toggle
+                          IconButton(
+                            icon: Icon(
+                              _autoCaptureEnabled
+                                  ? Icons.motion_photos_auto_rounded
+                                  : Icons.motion_photos_off_rounded,
+                              color: _autoCaptureEnabled
+                                  ? const Color(0xFF7B6CF8)
+                                  : Colors.white,
+                            ),
+                            tooltip: _autoCaptureEnabled
+                                ? 'Auto-capture on'
+                                : 'Auto-capture off',
+                            onPressed: () {
+                              setState(() {
+                                _autoCaptureEnabled = !_autoCaptureEnabled;
+                                _resetStability();
+                              });
                             },
                           ),
                           // Gallery import
@@ -435,17 +553,14 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        Icons.error_outline,
-                        size: 64,
-                        color: Colors.red[300],
-                      ),
+                      Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
                       const SizedBox(height: 16),
                       Text(
                         'Camera Error',
-                        style: Theme.of(
-                          context,
-                        ).textTheme.titleLarge?.copyWith(color: Colors.white),
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleLarge
+                            ?.copyWith(color: Colors.white),
                       ),
                       const SizedBox(height: 8),
                       Padding(
@@ -453,16 +568,16 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
                         child: Text(
                           _error!,
                           textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodyMedium
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
                               ?.copyWith(color: Colors.white70),
                         ),
                       ),
                       const SizedBox(height: 24),
                       FilledButton(
                         onPressed: () {
-                          setState(() {
-                            _error = null;
-                          });
+                          setState(() => _error = null);
                           ScannerBridge.startCamera();
                         },
                         child: const Text('Retry'),
@@ -517,9 +632,7 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
                           },
                         ),
                       ),
-
                     const SizedBox(height: 16),
-
                     // Capture button
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -588,9 +701,9 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative> {
 
   Color _getOverlayColor() {
     if (_corners.isEmpty || _corners.length < 8) {
-      return Colors.white.withValues(alpha: 0.55); // soft white = searching
+      return Colors.white.withValues(alpha: 0.55);
     }
-    return const Color(0xFF5C4BF5); // brand indigo = locked on
+    return const Color(0xFF5C4BF5);
   }
 
   Future<void> _importFromGallery() async {

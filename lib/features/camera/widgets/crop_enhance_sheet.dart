@@ -1,4 +1,6 @@
+// lib/features/camera/widgets/crop_enhance_sheet.dart
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
@@ -14,18 +16,18 @@ enum FilterMode {
   blackwhite;
 
   String get label => switch (this) {
-    original => 'Original',
-    grayscale => 'Gray',
-    enhance => 'Enhance',
-    blackwhite => 'B&W',
-  };
+        original => 'Original',
+        grayscale => 'Gray',
+        enhance => 'Enhance',
+        blackwhite => 'B&W',
+      };
 
   IconData get icon => switch (this) {
-    original => Icons.image_outlined,
-    grayscale => Icons.gradient,
-    enhance => Icons.auto_fix_high,
-    blackwhite => Icons.contrast,
-  };
+        original => Icons.image_outlined,
+        grayscale => Icons.gradient,
+        enhance => Icons.auto_fix_high,
+        blackwhite => Icons.contrast,
+      };
 }
 
 class ImageEditOptions {
@@ -71,9 +73,7 @@ class ImageEditArgs {
 String applyImageEdits(ImageEditArgs args) {
   final bytes = File(args.inputPath).readAsBytesSync();
   var image = img.decodeImage(bytes);
-  if (image == null) {
-    throw Exception('Failed to decode image');
-  }
+  if (image == null) throw Exception('Failed to decode image');
 
   switch (args.options.filter) {
     case FilterMode.original:
@@ -106,13 +106,9 @@ String applyImageEdits(ImageEditArgs args) {
   }
 
   final turns = args.options.rotationTurns % 4;
-  if (turns == 1) {
-    image = img.copyRotate(image, angle: 90);
-  } else if (turns == 2) {
-    image = img.copyRotate(image, angle: 180);
-  } else if (turns == 3) {
-    image = img.copyRotate(image, angle: 270);
-  }
+  if (turns == 1) image = img.copyRotate(image, angle: 90);
+  else if (turns == 2) image = img.copyRotate(image, angle: 180);
+  else if (turns == 3) image = img.copyRotate(image, angle: 270);
 
   File(args.outputPath).writeAsBytesSync(img.encodeJpg(image, quality: 95));
   return args.outputPath;
@@ -128,6 +124,224 @@ img.Image _threshold(img.Image image, int threshold) {
   }
   return image;
 }
+
+// ---------------------------------------------------------------------------
+// FilterThumbnailStrip
+// ---------------------------------------------------------------------------
+
+/// Arguments sent to the thumbnail-generation isolate.
+class _ThumbArgs {
+  const _ThumbArgs({
+    required this.imagePath,
+    required this.targetWidth,
+  });
+  final String imagePath;
+  final int targetWidth;
+}
+
+/// Decode & downscale the image to a small thumbnail in an isolate.
+Future<img.Image?> _decodeThumbnail(_ThumbArgs args) async {
+  final bytes = await File(args.imagePath).readAsBytes();
+  final full = img.decodeImage(bytes);
+  if (full == null) return null;
+  return img.copyResize(full, width: args.targetWidth);
+}
+
+/// Builds the filter colour-matrix for preview (same logic as [_previewMatrix]).
+List<double> _matrixForFilter(FilterMode filter) {
+  double contrast = 1;
+  double brightness = 0;
+  double saturation = 1.0;
+
+  switch (filter) {
+    case FilterMode.original:
+      break;
+    case FilterMode.grayscale:
+      saturation = 0;
+      break;
+    case FilterMode.enhance:
+      contrast *= 1.22;
+      brightness += 0.04;
+      saturation = 0.9;
+      break;
+    case FilterMode.blackwhite:
+      contrast *= 1.55;
+      brightness += 0.06;
+      saturation = 0;
+      break;
+  }
+
+  final offset = brightness * 255;
+  final inverseSaturation = 1 - saturation;
+  final red = inverseSaturation * _lumaRed;
+  final green = inverseSaturation * _lumaGreen;
+  final blue = inverseSaturation * _lumaBlue;
+
+  return [
+    contrast * (red + saturation), contrast * green, contrast * blue, 0, offset,
+    contrast * red, contrast * (green + saturation), contrast * blue, 0, offset,
+    contrast * red, contrast * green, contrast * (blue + saturation), 0, offset,
+    0, 0, 0, 1, 0,
+  ];
+}
+
+/// Horizontal strip of filter chips that each show a thumbnail of the image
+/// with the filter's [ColorFilter] matrix applied — identical to CamScanner.
+class FilterThumbnailStrip extends StatefulWidget {
+  const FilterThumbnailStrip({
+    super.key,
+    required this.imagePath,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final String imagePath;
+  final FilterMode selected;
+  final ValueChanged<FilterMode> onSelect;
+
+  @override
+  State<FilterThumbnailStrip> createState() => _FilterThumbnailStripState();
+}
+
+class _FilterThumbnailStripState extends State<FilterThumbnailStrip> {
+  img.Image? _thumb;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadThumbnail();
+  }
+
+  @override
+  void didUpdateWidget(FilterThumbnailStrip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imagePath != widget.imagePath) {
+      setState(() {
+        _thumb = null;
+        _loading = true;
+      });
+      _loadThumbnail();
+    }
+  }
+
+  Future<void> _loadThumbnail() async {
+    final thumb = await Isolate.run(
+      () => _decodeThumbnail(
+        _ThumbArgs(imagePath: widget.imagePath, targetWidth: 120),
+      ),
+    );
+    if (!mounted) return;
+    setState(() {
+      _thumb = thumb;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+
+    return SizedBox(
+      height: 108,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        children: FilterMode.values.map((mode) {
+          final selected = widget.selected == mode;
+          return Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: InkWell(
+              onTap: () => widget.onSelect(mode),
+              borderRadius: BorderRadius.circular(16),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: 76,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: selected ? cs.primary : cs.outlineVariant,
+                    width: selected ? 2.0 : 1.0,
+                  ),
+                  color: selected
+                      ? cs.primaryContainer
+                      : cs.surfaceContainerHighest,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Thumbnail area
+                    ClipRRect(
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(14),
+                      ),
+                      child: SizedBox(
+                        height: 72,
+                        width: double.infinity,
+                        child: _loading
+                            ? Center(
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: cs.primary,
+                                  ),
+                                ),
+                              )
+                            : _thumb == null
+                                ? Icon(
+                                    mode.icon,
+                                    color: cs.onSurfaceVariant,
+                                    size: 28,
+                                  )
+                                : ColorFiltered(
+                                    colorFilter: ColorFilter.matrix(
+                                      _matrixForFilter(mode),
+                                    ),
+                                    child: Image.memory(
+                                      img.encodeJpg(_thumb!, quality: 80)
+                                          as dynamic,
+                                      fit: BoxFit.cover,
+                                      gaplessPlayback: true,
+                                    ),
+                                  ),
+                      ),
+                    ),
+                    // Label
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 6,
+                        horizontal: 4,
+                      ),
+                      child: Text(
+                        mode.label,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: selected
+                              ? cs.onPrimaryContainer
+                              : cs.onSurfaceVariant,
+                          fontWeight: selected
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ImageEditSheet
+// ---------------------------------------------------------------------------
 
 class ImageEditSheet extends StatefulWidget {
   const ImageEditSheet({
@@ -194,10 +408,11 @@ class _ImageEditSheetState extends State<ImageEditSheet> {
               controller: scrollCtrl,
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               children: [
+                // Live preview
                 ClipRRect(
                   borderRadius: BorderRadius.circular(20),
                   child: Container(
-                    height: 340,
+                    height: 280,
                     color: cs.surfaceContainerHighest,
                     child: _PreviewImage(
                       path: widget.imagePath,
@@ -205,7 +420,9 @@ class _ImageEditSheetState extends State<ImageEditSheet> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 20),
+
+                // Filter section — now shows real thumbnail previews
                 Text(
                   'Filter',
                   style: theme.textTheme.titleSmall?.copyWith(
@@ -213,63 +430,13 @@ class _ImageEditSheetState extends State<ImageEditSheet> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                SizedBox(
-                  height: 80,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    children: FilterMode.values.map((mode) {
-                      final selected = _options.filter == mode;
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 12),
-                        child: InkWell(
-                          onTap: () => setState(() {
-                            _options = _options.copyWith(filter: mode);
-                          }),
-                          borderRadius: BorderRadius.circular(16),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 180),
-                            width: 88,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: selected
-                                  ? cs.primaryContainer
-                                  : cs.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: selected
-                                    ? cs.primary
-                                    : cs.outlineVariant,
-                              ),
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  mode.icon,
-                                  color: selected
-                                      ? cs.onPrimaryContainer
-                                      : cs.onSurfaceVariant,
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  mode.label,
-                                  style: theme.textTheme.labelMedium?.copyWith(
-                                    color: selected
-                                        ? cs.onPrimaryContainer
-                                        : cs.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
+                FilterThumbnailStrip(
+                  imagePath: widget.imagePath,
+                  selected: _options.filter,
+                  onSelect: (mode) =>
+                      setState(() => _options = _options.copyWith(filter: mode)),
                 ),
+
                 const SizedBox(height: 20),
                 _SliderTile(
                   title: 'Brightness',
@@ -278,9 +445,8 @@ class _ImageEditSheetState extends State<ImageEditSheet> {
                   max: 0.4,
                   divisions: 16,
                   label: '${(_options.brightness * 100).round()}%',
-                  onChanged: (value) => setState(() {
-                    _options = _options.copyWith(brightness: value);
-                  }),
+                  onChanged: (value) =>
+                      setState(() => _options = _options.copyWith(brightness: value)),
                 ),
                 _SliderTile(
                   title: 'Contrast',
@@ -289,9 +455,8 @@ class _ImageEditSheetState extends State<ImageEditSheet> {
                   max: 1.6,
                   divisions: 10,
                   label: _options.contrast.toStringAsFixed(2),
-                  onChanged: (value) => setState(() {
-                    _options = _options.copyWith(contrast: value);
-                  }),
+                  onChanged: (value) =>
+                      setState(() => _options = _options.copyWith(contrast: value)),
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -332,6 +497,10 @@ class _ImageEditSheetState extends State<ImageEditSheet> {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Preview image with ColorFilter matrix for live edits
+// ---------------------------------------------------------------------------
 
 class _PreviewImage extends StatelessWidget {
   const _PreviewImage({required this.path, required this.options});
@@ -381,28 +550,16 @@ List<double> _previewMatrix(ImageEditOptions options) {
   final blue = inverseSaturation * _lumaBlue;
 
   return [
-    contrast * (red + saturation),
-    contrast * green,
-    contrast * blue,
-    0,
-    offset,
-    contrast * red,
-    contrast * (green + saturation),
-    contrast * blue,
-    0,
-    offset,
-    contrast * red,
-    contrast * green,
-    contrast * (blue + saturation),
-    0,
-    offset,
-    0,
-    0,
-    0,
-    1,
-    0,
+    contrast * (red + saturation), contrast * green, contrast * blue, 0, offset,
+    contrast * red, contrast * (green + saturation), contrast * blue, 0, offset,
+    contrast * red, contrast * green, contrast * (blue + saturation), 0, offset,
+    0, 0, 0, 1, 0,
   ];
 }
+
+// ---------------------------------------------------------------------------
+// Slider tile
+// ---------------------------------------------------------------------------
 
 class _SliderTile extends StatelessWidget {
   const _SliderTile({
