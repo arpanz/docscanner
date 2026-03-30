@@ -183,7 +183,7 @@ class ScannerEngine(
     /**
      * Capture a high-resolution image and apply perspective correction.
      *
-     * @param corners The 4 corner points of the detected document
+     * @param corners The 4 corner points of the detected document (in analysis frame coordinates)
      * @param onCaptureComplete Callback with the saved file path
      */
     fun captureDocument(corners: List<Double>, onCaptureComplete: (String) -> Unit) {
@@ -210,9 +210,21 @@ class ScannerEngine(
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
                     // Apply perspective correction
                     val capturedBitmap = BitmapFactory.decodeFile(outputFile.absolutePath)
-                    val cornerPoints = deflattenCorners(corners)
+                        ?: run {
+                            onError?.invoke("Failed to decode captured image")
+                            return
+                        }
 
                     try {
+                        // Scale corners from analysis frame coordinates to capture image coordinates
+                        val scaleX = capturedBitmap.width.toDouble() / currentFrameWidth
+                        val scaleY = capturedBitmap.height.toDouble() / currentFrameHeight
+
+                        val scaledCorners = corners.chunked(2).map { (x, y) ->
+                            listOf(x * scaleX, y * scaleY)
+                        }.flatten()
+
+                        val cornerPoints = deflattenCorners(scaledCorners)
                         val correctedBitmap = perspectiveCorrect(capturedBitmap, cornerPoints)
                         correctedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, FileOutputStream(outputFile))
                         correctedBitmap.recycle()
@@ -437,8 +449,9 @@ class ScannerEngine(
         val clahe = Imgproc.createCLAHE(3.0, Size(8.0, 8.0))
         clahe.apply(channels[0], channels[0])
 
-        // Merge back
+        // Merge back and release channel mats
         Core.merge(channels, lab)
+        channels.forEach { it.release() }
 
         // Convert back to BGR
         val resultBgr = Mat()
@@ -450,9 +463,13 @@ class ScannerEngine(
         val hsvChannels = ArrayList<Mat>()
         Core.split(hsv, hsvChannels)
 
-        // Increase saturation (S channel) by 20% using Scalar multiplication
+        // Increase saturation (S channel) by 20% with clamp to prevent overflow
         Core.multiply(hsvChannels[1], Scalar(1.2), hsvChannels[1])
+        Core.min(hsvChannels[1], Scalar(255.0), hsvChannels[1]) // clamp to 255
+
+        // Merge and release channel mats
         Core.merge(hsvChannels, hsv)
+        hsvChannels.forEach { it.release() }
 
         // Convert back to BGR then RGBA
         Imgproc.cvtColor(hsv, resultBgr, Imgproc.COLOR_HSV2BGR_FULL)

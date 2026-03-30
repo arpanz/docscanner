@@ -7,55 +7,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/services/scanner_bridge.dart';
 
-/// Provider for the native camera preview controller.
-final nativeCameraPreviewControllerProvider =
-    ChangeNotifierProvider<NativeCameraPreviewController>((ref) {
-  return NativeCameraPreviewController();
-});
-
-/// Controller for managing native camera preview state.
-class NativeCameraPreviewController extends ChangeNotifier {
-  List<double> _corners = [];
-  int _frameWidth = 0;
-  int _frameHeight = 0;
-  bool _isReady = false;
-  String? _error;
-
-  List<double> get corners => _corners;
-  int get frameWidth => _frameWidth;
-  int get frameHeight => _frameHeight;
-  bool get isReady => _isReady;
-  String? get error => _error;
-
-  void updateCorners(List<double> corners, int frameWidth, int frameHeight) {
-    _corners = corners;
-    _frameWidth = frameWidth;
-    _frameHeight = frameHeight;
-    notifyListeners();
-  }
-
-  void setReady() {
-    _isReady = true;
-    _error = null;
-    notifyListeners();
-  }
-
-  void setError(String error) {
-    _error = error;
-    _isReady = false;
-    notifyListeners();
-  }
-
-  void reset() {
-    _corners = [];
-    _frameWidth = 0;
-    _frameHeight = 0;
-    _isReady = false;
-    _error = null;
-    notifyListeners();
-  }
-}
-
 /// Native Android camera preview using PlatformView.
 /// 
 /// This widget displays the native CameraX preview surface
@@ -91,20 +42,14 @@ class _NativeCameraPreviewState extends ConsumerState<NativeCameraPreview> {
     if (_isListening) return;
     _isListening = true;
 
-    ScannerBridge.edgeStream.listen(
+    _edgeSubscription = ScannerBridge.edgeStream.listen(
       (data) {
         widget.onCornerDetected(data.corners, data.frameWidth, data.frameHeight);
-        ref.read(nativeCameraPreviewControllerProvider).updateCorners(
-          data.corners,
-          data.frameWidth,
-          data.frameHeight,
-        );
       },
       onError: (error) {
         final platformError = error as PlatformException;
         final message = platformError.message ?? 'Unknown error';
         widget.onError?.call(message);
-        ref.read(nativeCameraPreviewControllerProvider).setError(message);
       },
       onDone: () {
         _isListening = false;
@@ -146,7 +91,6 @@ class _NativeCameraPreviewState extends ConsumerState<NativeCameraPreview> {
       viewType: 'com.example.docscanner/camera_preview',
       onPlatformViewCreated: (id) {
         widget.onCameraReady?.call();
-        ref.read(nativeCameraPreviewControllerProvider).setReady();
       },
     );
   }

@@ -4,7 +4,8 @@
       "Bash(move *)",
       "Bash(flutter *)",
       "Bash(findstr *)",
-      "Bash(dart *)"
+      "Bash(dart *)",
+      "Bash(git push *)"
     ]
   },
   "$version": 3

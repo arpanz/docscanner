@@ -86,8 +86,12 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "startCamera" -> {
-                        startCamera()
-                        result.success(null)
+                        val started = startCamera()
+                        if (started) {
+                            result.success(null)
+                        } else {
+                            result.error("PREVIEW_NOT_READY", "Camera preview surface not ready", null)
+                        }
                     }
                     "stopCamera" -> {
                         stopCamera()
@@ -138,7 +142,7 @@ class MainActivity : FlutterActivity() {
         scannerEngine = null
     }
 
-    private fun startCamera() {
+    private fun startCamera(): Boolean {
         // Check camera permission
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED
@@ -148,7 +152,7 @@ class MainActivity : FlutterActivity() {
                 arrayOf(Manifest.permission.CAMERA),
                 REQUEST_CAMERA_PERMISSION
             )
-            return
+            return false
         }
 
         // Start camera with the PreviewView from PlatformView
@@ -163,7 +167,7 @@ class MainActivity : FlutterActivity() {
                 )
                 return@runOnUiThread
             }
-            
+
             scannerEngine?.startCamera(currentPreviewView)
 
             // Setup edge detection callback to stream to Flutter with frame dimensions
@@ -185,6 +189,7 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+        return true
     }
 
     private fun stopCamera() {
@@ -209,39 +214,53 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun captureDocument(corners: List<Double>, result: MethodChannel.Result) {
-        CoroutineScope(Dispatchers.Main).launch {
-            scannerEngine?.captureDocument(corners) { imagePath ->
+        // captureDocument uses callbacks, so we just initiate on main thread
+        scannerEngine?.captureDocument(corners) { imagePath ->
+            CoroutineScope(Dispatchers.Main).launch {
                 result.success(imagePath)
             }
         }
     }
 
     private fun enhanceImage(path: String, mode: String, result: MethodChannel.Result) {
-        CoroutineScope(Dispatchers.Main).launch {
+        // Run heavy image processing on IO thread
+        CoroutineScope(Dispatchers.IO).launch {
             try {
                 val enhancedPath = scannerEngine?.enhanceAndSave(path, mode)
-                result.success(enhancedPath)
+                CoroutineScope(Dispatchers.Main).launch {
+                    result.success(enhancedPath)
+                }
             } catch (e: Exception) {
-                result.error("ENHANCE_ERROR", e.message, null)
+                CoroutineScope(Dispatchers.Main).launch {
+                    result.error("ENHANCE_ERROR", e.message, null)
+                }
             }
         }
     }
 
     private fun buildPdf(images: List<String>, title: String, result: MethodChannel.Result) {
-        CoroutineScope(Dispatchers.Main).launch {
+        // Run heavy PDF generation on IO thread
+        CoroutineScope(Dispatchers.IO).launch {
             try {
                 val pdfPath = scannerEngine?.buildPdfNative(images, title)
-                result.success(pdfPath)
+                CoroutineScope(Dispatchers.Main).launch {
+                    result.success(pdfPath)
+                }
             } catch (e: Exception) {
-                result.error("PDF_ERROR", e.message, null)
+                CoroutineScope(Dispatchers.Main).launch {
+                    result.error("PDF_ERROR", e.message, null)
+                }
             }
         }
     }
 
     private fun extractText(path: String, result: MethodChannel.Result) {
-        CoroutineScope(Dispatchers.Main).launch {
+        // Run OCR on IO thread
+        CoroutineScope(Dispatchers.IO).launch {
             scannerEngine?.extractText(path) { text ->
-                result.success(text)
+                CoroutineScope(Dispatchers.Main).launch {
+                    result.success(text)
+                }
             }
         }
     }
