@@ -427,7 +427,6 @@ class _ManualCropEditorState extends State<ManualCropEditor>
                   imageWidth: widget.imageWidth,
                   imageHeight: widget.imageHeight,
                   displaySize: _displaySize,
-                  displayOffset: _displayOffset,
                   activeIndex: _draggingIndex,
                   color: const Color(0xFF5C4BF5),
                   pulseScale: _draggingIndex == -1 ? _pulseAnim.value : 1.0,
@@ -467,7 +466,6 @@ class _ManualCropPainter extends CustomPainter {
     required this.imageWidth,
     required this.imageHeight,
     required this.displaySize,
-    required this.displayOffset,
     required this.activeIndex,
     required this.color,
     required this.pulseScale,
@@ -477,17 +475,16 @@ class _ManualCropPainter extends CustomPainter {
   final int imageWidth;
   final int imageHeight;
   final Size displaySize;
-  final Offset displayOffset;
   final int activeIndex;
   final Color color;
   final double pulseScale;
 
-  Offset _toScreen(double ix, double iy, Size canvasSize) {
+  Offset _toScreen(double ix, double iy) {
     if (imageWidth == 0 || imageHeight == 0 || displaySize == Size.zero) {
       return Offset.zero;
     }
-    final sx = (ix / imageWidth) * displaySize.width + displayOffset.dx;
-    final sy = (iy / imageHeight) * displaySize.height + displayOffset.dy;
+    final sx = (ix / imageWidth) * displaySize.width;
+    final sy = (iy / imageHeight) * displaySize.height;
     return Offset(sx, sy);
   }
 
@@ -497,7 +494,7 @@ class _ManualCropPainter extends CustomPainter {
 
     final points = <Offset>[];
     for (var i = 0; i < 4; i++) {
-      points.add(_toScreen(corners[i * 2], corners[i * 2 + 1], size));
+      points.add(_toScreen(corners[i * 2], corners[i * 2 + 1]));
     }
 
     // Dim area outside crop

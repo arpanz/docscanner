@@ -1,6 +1,7 @@
 // lib/features/camera/camera_page_native.dart
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -113,11 +114,19 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
     int frameWidth,
     int frameHeight,
   ) {
-    setState(() {
-      _corners = corners;
-      _frameWidth = frameWidth;
-      _frameHeight = frameHeight;
-    });
+    if (!mounted) return;
+
+    final cornersChanged =
+        !listEquals(corners, _corners) ||
+        frameWidth != _frameWidth ||
+        frameHeight != _frameHeight;
+    if (cornersChanged) {
+      setState(() {
+        _corners = corners;
+        _frameWidth = frameWidth;
+        _frameHeight = frameHeight;
+      });
+    }
 
     if (!_autoCaptureEnabled || _isProcessing || corners.length < 8) {
       _resetStability();
@@ -226,7 +235,8 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
       }
 
       // If corners were adjusted, re-run perspective correction with new corners
-      final finalPath = adjustedCorners == _corners
+      final cornersUnchanged = listEquals(adjustedCorners, _corners);
+      final finalPath = cornersUnchanged
           ? rawPath
           : await ScannerBridge.captureDocument(adjustedCorners);
 

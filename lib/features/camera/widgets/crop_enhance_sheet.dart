@@ -1,6 +1,7 @@
 // lib/features/camera/widgets/crop_enhance_sheet.dart
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
@@ -141,8 +142,8 @@ class _ThumbArgs {
 }
 
 /// Decode & downscale the image to a small thumbnail in an isolate.
-Future<img.Image?> _decodeThumbnail(_ThumbArgs args) async {
-  final bytes = await File(args.imagePath).readAsBytes();
+img.Image? _decodeThumbnail(_ThumbArgs args) {
+  final bytes = File(args.imagePath).readAsBytesSync();
   final full = img.decodeImage(bytes);
   if (full == null) return null;
   return img.copyResize(full, width: args.targetWidth);
@@ -257,8 +258,8 @@ class _FilterThumbnailStripState extends State<FilterThumbnailStrip> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
+    final cs = theme.colorScheme;
 
     return SizedBox(
       height: 108,
@@ -318,8 +319,9 @@ class _FilterThumbnailStripState extends State<FilterThumbnailStrip> {
                                   _matrixForFilter(mode),
                                 ),
                                 child: Image.memory(
-                                  img.encodeJpg(_thumb!, quality: 80)
-                                      as dynamic,
+                                  Uint8List.fromList(
+                                    img.encodeJpg(_thumb!, quality: 80),
+                                  ),
                                   fit: BoxFit.cover,
                                   gaplessPlayback: true,
                                 ),
