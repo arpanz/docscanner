@@ -17,7 +17,8 @@ import '../../shared/services/permission_service.dart';
 import '../../shared/services/scanner_bridge.dart';
 import 'widgets/native_camera_preview.dart';
 
-const double kCornerOverlaySmoothing = 0.22;
+// Reduced smoothing for more responsive overlay (was 0.22)
+const double kCornerOverlaySmoothing = 0.35;
 
 /// Native camera page for Android using CameraX + OpenCV.
 ///

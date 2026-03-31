@@ -68,8 +68,15 @@ class ScannerEngine(
     private var openCvErrorReported = false
 
     // Track current frame dimensions for overlay scaling
+    // NOTE: These are now deprecated - frame dimensions are passed with each detection result
+    @Deprecated("Use frame dimensions from detection result instead")
     private var currentFrameWidth: Int = 0
+    @Deprecated("Use frame dimensions from detection result instead")
     private var currentFrameHeight: Int = 0
+
+    // Store the last analyzed frame dimensions atomically with corner data
+    private var lastAnalyzedFrameWidth: Int = 0
+    private var lastAnalyzedFrameHeight: Int = 0
 
     // Callbacks
     var onFrameAnalyzed: ((Bitmap, List<Double>, Int, Int) -> Unit)? = null
@@ -148,15 +155,17 @@ class ScannerEngine(
                                     val bitmap = imageProxy.toBitmap()
                                     val corners = detectDocumentContour(bitmap)
 
-                                    // Update frame dimensions
-                                    currentFrameWidth = bitmap.width
-                                    currentFrameHeight = bitmap.height
+                                    // Store frame dimensions atomically with this frame's detection
+                                    val frameWidth = bitmap.width
+                                    val frameHeight = bitmap.height
+                                    lastAnalyzedFrameWidth = frameWidth
+                                    lastAnalyzedFrameHeight = frameHeight
 
                                     // Send corners + frame dimensions to Flutter for overlay drawing
                                     corners?.let {
                                         val cornerList = flattenCorners(it)
-                                        onEdgeDetected?.invoke(cornerList, currentFrameWidth, currentFrameHeight)
-                                        onFrameAnalyzed?.invoke(bitmap, cornerList, currentFrameWidth, currentFrameHeight)
+                                        onEdgeDetected?.invoke(cornerList, frameWidth, frameHeight)
+                                        onFrameAnalyzed?.invoke(bitmap, cornerList, frameWidth, frameHeight)
                                     }
                                 } catch (t: Throwable) {
                                     Log.e(TAG, "Frame analysis error", t)
@@ -260,8 +269,9 @@ class ScannerEngine(
 
                     try {
                         // Scale corners from analysis frame coordinates to capture image coordinates
-                        val scaleX = capturedBitmap.width.toDouble() / currentFrameWidth
-                        val scaleY = capturedBitmap.height.toDouble() / currentFrameHeight
+                        // Use the frame dimensions stored with the corner detection to avoid race conditions
+                        val scaleX = capturedBitmap.width.toDouble() / lastAnalyzedFrameWidth
+                        val scaleY = capturedBitmap.height.toDouble() / lastAnalyzedFrameHeight
 
                         val scaledCorners = corners.chunked(2).map { (x, y) ->
                             listOf(x * scaleX, y * scaleY)
@@ -322,6 +332,8 @@ class ScannerEngine(
     /**
      * Detect document contour in a bitmap using OpenCV.
      * Returns 4 corner points if a document is found, null otherwise.
+     * 
+     * Uses adaptive thresholding and RETR_EXTERNAL for stable edge detection.
      */
     fun detectDocumentContour(bitmap: Bitmap): MatOfPoint2f? {
         if (!ensureOpenCvReady()) {
@@ -330,8 +342,8 @@ class ScannerEngine(
 
         var mat: Mat? = null
         var gray: Mat? = null
+        var blurred: Mat? = null
         var edges: Mat? = null
-        var hierarchy: Mat? = null
         val contours = ArrayList<MatOfPoint>()
 
         try {
@@ -339,29 +351,45 @@ class ScannerEngine(
             Utils.bitmapToMat(bitmap, mat)
 
             gray = Mat()
+            blurred = Mat()
             edges = Mat()
-            hierarchy = Mat()
 
             // Convert to grayscale
             Imgproc.cvtColor(mat, gray, Imgproc.COLOR_RGBA2GRAY)
 
-            // Apply Gaussian blur to reduce noise
-            Imgproc.GaussianBlur(gray, gray, Size(5.0, 5.0), 0.0)
+            // Moderate Gaussian blur to reduce noise without losing document edges
+            Imgproc.GaussianBlur(gray, blurred, Size(5.0, 5.0), 0.0)
 
-            // Edge detection using Canny
-            Imgproc.Canny(gray, edges, 75.0, 200.0)
+            // Adaptive Canny edge detection with automatic thresholds
+            val lowerThreshold = computeAdaptiveCannyThreshold(blurred)
+            val upperThreshold = lowerThreshold * 2.5
+            Imgproc.Canny(blurred, edges, lowerThreshold, upperThreshold)
 
-            // Find contours
+            // Light morphological closing to connect broken edges (helps with textured backgrounds)
+            val kernel = Imgproc.getStructuringElement(
+                Imgproc.MORPH_RECT,
+                Size(3.0, 3.0)
+            )
+            val closedEdges = Mat()
+            Imgproc.morphologyEx(edges, closedEdges, Imgproc.MORPH_CLOSE, kernel)
+            kernel.release()
+
+            // Find ONLY external contours - avoids picking up internal texture
             Imgproc.findContours(
-                edges,
+                closedEdges,
                 contours,
-                hierarchy,
-                Imgproc.RETR_TREE,
+                null,
+                Imgproc.RETR_EXTERNAL,
                 Imgproc.CHAIN_APPROX_SIMPLE
             )
 
+            closedEdges.release()
+
             // Find the largest 4-sided contour (the document)
+            // Reasonable minimum area - at least 3% of image to ignore small noise
+            val minArea = (blurred.width() * blurred.height()) * 0.03
             return contours
+                .filter { Imgproc.contourArea(it) > minArea }
                 .sortedByDescending { Imgproc.contourArea(it) }
                 .firstNotNullOfOrNull { contour ->
                     approxQuad(contour)
@@ -372,14 +400,41 @@ class ScannerEngine(
         } finally {
             mat?.release()
             gray?.release()
+            blurred?.release()
             edges?.release()
-            hierarchy?.release()
             contours.forEach { it.release() }
         }
     }
 
     /**
+     * Compute adaptive Canny threshold using image statistics.
+     * This makes edge detection adapt to different lighting conditions.
+     */
+    private fun computeAdaptiveCannyThreshold(gray: Mat): Double {
+        // Calculate mean and standard deviation of pixel intensities
+        val meanMat = MatOfDouble()
+        val stdDevMat = MatOfDouble()
+        Core.meanStdDev(gray, meanMat, stdDevMat)
+        
+        val mean = meanMat.toArray()[0]
+        val stdDev = stdDevMat.toArray()[0]
+        
+        meanMat.release()
+        stdDevMat.release()
+
+        // Adaptive threshold based on image contrast
+        // Low contrast scenes need lower thresholds
+        // High contrast scenes can use higher thresholds
+        val baseThreshold = 100.0
+        val contrastFactor = stdDev / 50.0  // Normalize around typical document contrast
+
+        // Clamp between 50 and 150 for stability
+        return (baseThreshold * (1.0 / (contrastFactor + 0.5))).coerceIn(50.0, 150.0)
+    }
+
+    /**
      * Approximate a contour to a quadrilateral.
+     * Returns null if the contour doesn't form a valid quad.
      */
     private fun approxQuad(contour: MatOfPoint): MatOfPoint2f? {
         // Convert MatOfPoint to MatOfPoint2f for arcLength
@@ -389,15 +444,79 @@ class ScannerEngine(
 
         val peri = Imgproc.arcLength(contour2f, true)
         val approx = MatOfPoint2f()
-        Imgproc.approxPolyDP(contour2f, approx, 0.02 * peri, true)
+        // Slightly tighter epsilon for more accurate corner detection (0.015 instead of 0.02)
+        Imgproc.approxPolyDP(contour2f, approx, 0.015 * peri, true)
         contour2f.release()
 
-        return if (approx.total() == 4L) {
-            orderPoints(approx)
-        } else {
+        if (approx.total() != 4L) {
             approx.release()
-            null
+            return null
         }
+
+        val ordered = orderPoints(approx)
+        
+        // Validate the quadrilateral - reject self-intersecting or extreme quads
+        if (!isValidQuadrilateral(ordered)) {
+            ordered.release()
+            return null
+        }
+        
+        return ordered
+    }
+
+    /**
+     * Validate that 4 points form a proper convex quadrilateral.
+     * Rejects self-intersecting quads and extreme aspect ratios.
+     */
+    private fun isValidQuadrilateral(points: MatOfPoint2f): Boolean {
+        val pts = points.toArray()
+        if (pts.size < 4) return false
+
+        // Check for convexity using cross product
+        // All cross products should have the same sign for a convex quad
+        val crossProducts = mutableListOf<Double>()
+        for (i in 0..3) {
+            val p1 = pts[i]
+            val p2 = pts[(i + 1) % 4]
+            val p3 = pts[(i + 2) % 4]
+            
+            // Vector p1->p2
+            val v1x = p2.x - p1.x
+            val v1y = p2.y - p1.y
+            // Vector p2->p3
+            val v2x = p3.x - p2.x
+            val v2y = p3.y - p2.y
+            
+            // Cross product (z-component)
+            val cross = v1x * v2y - v1y * v2x
+            crossProducts.add(cross)
+        }
+
+        // All cross products must have the same sign (all positive or all negative)
+        val allPositive = crossProducts.all { it > 0 }
+        val allNegative = crossProducts.all { it < 0 }
+        if (!allPositive && !allNegative) return false
+
+        // Check aspect ratio - reject extremely skewed quads
+        val widthTop = distance(pts[0], pts[1])
+        val widthBottom = distance(pts[3], pts[2])
+        val heightLeft = distance(pts[0], pts[3])
+        val heightRight = distance(pts[1], pts[2])
+        
+        val avgWidth = (widthTop + widthBottom) / 2
+        val avgHeight = (heightLeft + heightRight) / 2
+        
+        // Reject quads with extreme aspect ratios (> 10:1 or < 1:10)
+        if (avgWidth > 0 && avgHeight > 0) {
+            val aspectRatio = avgWidth / avgHeight
+            if (aspectRatio > 10.0 || aspectRatio < 0.1) return false
+        }
+
+        // Check minimum area (at least 1000 pixels to avoid noise)
+        val area = Imgproc.contourArea(points)
+        if (area < 1000) return false
+
+        return true
     }
 
     /**

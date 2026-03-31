@@ -9,10 +9,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/services/scanner_bridge.dart';
 
 /// Number of consecutive stable frames required to trigger auto-capture.
-const int kAutoCaptureLockFrames = 30;
+/// Increased from 30 to 45 for more reliable auto-capture.
+const int kAutoCaptureLockFrames = 45;
 
 /// Pixel distance threshold within which corner points are considered "stable".
-const double kCornerStableThreshold = 10.0;
+/// Increased from 10.0 to 12.0 for better tolerance of minor detection jitter.
+const double kCornerStableThreshold = 12.0;
 
 /// Native Android camera preview using PlatformView.
 ///
@@ -269,6 +271,9 @@ class _ManualCropEditorState extends State<ManualCropEditor>
   final GlobalKey _imageKey = GlobalKey();
   Size _displaySize = Size.zero;
   Offset _displayOffset = Offset.zero;
+  
+  // Track if display geometry has been initialized
+  bool _displayGeometryReady = false;
 
   @override
   void initState() {
@@ -283,6 +288,38 @@ class _ManualCropEditorState extends State<ManualCropEditor>
       begin: 0.85,
       end: 1.15,
     ).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
+    
+    // Schedule display geometry initialization after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) => _initDisplayGeometry());
+  }
+  
+  void _initDisplayGeometry() {
+    if (!mounted) return;
+    _updateDisplayGeometry();
+    setState(() => _displayGeometryReady = true);
+  }
+
+  /// Calculate the rendered image size when using BoxFit.contain
+  Size _calculateContainSize(
+    double imageWidth,
+    double imageHeight,
+    double maxWidth,
+    double maxHeight,
+  ) {
+    final imageAspect = imageWidth / imageHeight;
+    final containerAspect = maxWidth / maxHeight;
+    
+    if (imageAspect > containerAspect) {
+      // Image is wider than container - fit to width
+      final width = maxWidth;
+      final height = width / imageAspect;
+      return Size(width, height);
+    } else {
+      // Image is taller than container - fit to height
+      final height = maxHeight;
+      final width = height * imageAspect;
+      return Size(width, height);
+    }
   }
 
   @override
@@ -293,7 +330,9 @@ class _ManualCropEditorState extends State<ManualCropEditor>
 
   /// Convert image coords → screen coords within the display box.
   Offset _toScreen(double ix, double iy) {
-    if (widget.imageWidth == 0 || widget.imageHeight == 0) return Offset.zero;
+    if (!_displayGeometryReady || widget.imageWidth == 0 || widget.imageHeight == 0) {
+      return Offset.zero;
+    }
     final sx =
         (ix / widget.imageWidth) * _displaySize.width + _displayOffset.dx;
     final sy =
@@ -303,7 +342,9 @@ class _ManualCropEditorState extends State<ManualCropEditor>
 
   /// Convert screen coords → image coords.
   Offset _toImage(Offset screen) {
-    if (_displaySize == Size.zero) return Offset.zero;
+    if (!_displayGeometryReady || _displaySize == Size.zero) {
+      return Offset.zero;
+    }
     final ix =
         ((screen.dx - _displayOffset.dx) / _displaySize.width) *
         widget.imageWidth;
@@ -341,7 +382,11 @@ class _ManualCropEditorState extends State<ManualCropEditor>
   }
 
   void _onPanStart(DragStartDetails details) {
+    // Always update display geometry on pan start to ensure accuracy
     _updateDisplayGeometry();
+    if (!_displayGeometryReady) {
+      _displayGeometryReady = true;
+    }
     final idx = _findClosestCorner(details.globalPosition);
     if (idx != -1) {
       setState(() => _draggingIndex = idx);
@@ -395,48 +440,68 @@ class _ManualCropEditorState extends State<ManualCropEditor>
       ),
       body: Stack(
         children: [
-          // Image background
+          // Image background - centered with contain fit
+          Center(
+            child: LayoutBuilder(
+              builder: (ctx, constraints) {
+                // Calculate the actual rendered image size
+                final imageSize = _calculateContainSize(
+                  widget.imageWidth.toDouble(),
+                  widget.imageHeight.toDouble(),
+                  constraints.maxWidth,
+                  constraints.maxHeight,
+                );
+                
+                // Update display geometry on layout
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!_displayGeometryReady) {
+                    setState(() {
+                      _displaySize = imageSize;
+                      // For centered image, offset is the centering margin
+                      _displayOffset = Offset(
+                        (constraints.maxWidth - imageSize.width) / 2,
+                        (constraints.maxHeight - imageSize.height) / 2,
+                      );
+                      _displayGeometryReady = true;
+                    });
+                  }
+                });
+                
+                return Image.file(
+                  key: _imageKey,
+                  File(widget.imagePath),
+                  fit: BoxFit.contain,
+                  width: constraints.maxWidth,
+                  height: constraints.maxHeight,
+                );
+              },
+            ),
+          ),
+
+          // Quad + handles overlay - full screen but gestures work through
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _ManualCropPainter(
+                corners: _corners,
+                imageWidth: widget.imageWidth,
+                imageHeight: widget.imageHeight,
+                displaySize: _displaySize,
+                displayOffset: _displayOffset,
+                activeIndex: _draggingIndex,
+                color: const Color(0xFF5C4BF5),
+                pulseScale: _draggingIndex == -1 ? _pulseAnim.value : 1.0,
+              ),
+            ),
+          ),
+
+          // Invisible gesture detector over the entire area for dragging
           Positioned.fill(
             child: GestureDetector(
               onPanStart: _onPanStart,
               onPanUpdate: _onPanUpdate,
               onPanEnd: _onPanEnd,
-              child: LayoutBuilder(
-                builder: (ctx, constraints) {
-                  WidgetsBinding.instance.addPostFrameCallback(
-                    (_) => _updateDisplayGeometry(),
-                  );
-                  return Image.file(
-                    key: _imageKey,
-                    File(widget.imagePath),
-                    fit: BoxFit.contain,
-                    width: constraints.maxWidth,
-                    height: constraints.maxHeight,
-                  );
-                },
-              ),
-            ),
-          ),
-
-          // Quad + handles overlay
-          Positioned.fill(
-            child: IgnorePointer(
-              child: CustomPaint(
-                painter: _ManualCropPainter(
-                  corners: _corners,
-                  imageWidth: widget.imageWidth,
-                  imageHeight: widget.imageHeight,
-                  displaySize: _displaySize,
-                  displayOffset: _displayOffset,
-                  activeIndex: _draggingIndex,
-                  color: const Color(0xFF5C4BF5),
-                  pulseScale: _draggingIndex == -1 ? _pulseAnim.value : 1.0,
-                ),
-                child: AnimatedBuilder(
-                  animation: _pulseAnim,
-                  builder: (_, _) => const SizedBox.expand(),
-                ),
-              ),
+              behavior: HitTestBehavior.translucent,
+              child: Container(color: Colors.transparent),
             ),
           ),
         ],
@@ -483,12 +548,16 @@ class _ManualCropPainter extends CustomPainter {
   final double pulseScale;
 
   Offset _toScreen(double ix, double iy, Size canvasSize) {
+    // Use the displaySize/displayOffset passed from the widget state
+    // These are the actual rendered image dimensions
     if (imageWidth == 0 || imageHeight == 0 || displaySize == Size.zero) {
       return Offset.zero;
     }
-    final sx = (ix / imageWidth) * displaySize.width + displayOffset.dx;
-    final sy = (iy / imageHeight) * displaySize.height + displayOffset.dy;
-    return Offset(sx, sy);
+    // Scale from image coordinates to display coordinates
+    final sx = (ix / imageWidth) * displaySize.width;
+    final sy = (iy / imageHeight) * displaySize.height;
+    // Add offset to position within the canvas
+    return Offset(sx + displayOffset.dx, sy + displayOffset.dy);
   }
 
   @override
@@ -589,6 +658,7 @@ class _ManualCropPainter extends CustomPainter {
     return old.corners != corners ||
         old.activeIndex != activeIndex ||
         old.pulseScale != pulseScale ||
-        old.displaySize != displaySize;
+        old.displaySize != displaySize ||
+        old.displayOffset != displayOffset;
   }
 }
