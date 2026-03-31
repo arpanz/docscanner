@@ -50,10 +50,25 @@ class ScannerBridge {
     await _methodChannel.invokeMethod('setFlash', {'enabled': enabled});
   }
 
-  /// Capture a document with perspective correction.
+  /// Capture a raw (uncropped) high-resolution frame.
   ///
-  /// [corners] The 4 corner points of the document to extract.
-  /// Returns the file path of the processed image.
+  /// Use this to get the full image for [ManualCropEditor] before applying
+  /// perspective correction. Follow up with [captureDocument] after the user
+  /// confirms the adjusted corners.
+  static Future<String> captureRaw() async {
+    if (!Platform.isAndroid) {
+      throw UnsupportedError('ScannerBridge is only available on Android');
+    }
+    final result = await _methodChannel.invokeMethod<String>('captureRaw');
+    return result ?? '';
+  }
+
+  /// Capture a document with perspective correction applied.
+  ///
+  /// [corners] The 4 corner points of the document to extract (in analysis
+  /// frame coordinates). Corners are automatically scaled to the capture
+  /// resolution on the native side.
+  /// Returns the file path of the perspective-corrected image.
   static Future<String> captureDocument(List<double> corners) async {
     if (!Platform.isAndroid) {
       throw UnsupportedError('ScannerBridge is only available on Android');

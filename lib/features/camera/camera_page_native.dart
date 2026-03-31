@@ -1,13 +1,11 @@
 // lib/features/camera/camera_page_native.dart
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:image/image.dart' as img;
 import '../../core/constants.dart';
 import '../../core/utils.dart';
 import '../../core/router.dart';
@@ -17,19 +15,12 @@ import '../../shared/services/permission_service.dart';
 import '../../shared/services/scanner_bridge.dart';
 import 'widgets/native_camera_preview.dart';
 
-// Reduced smoothing for more responsive overlay (was 0.22)
-const double kCornerOverlaySmoothing = 0.35;
-
 /// Native camera page for Android using CameraX + OpenCV.
 ///
-/// Features:
-/// - Live edge detection overlay
-/// - Auto-capture when document is stable for [kAutoCaptureLockFrames] frames
-/// - Custom capture button
-/// - Flash toggle
-/// - Gallery import
-/// - Real-time corner tracking
-/// - Manual crop editor after each capture
+/// Capture flow:
+///   1. [captureRaw] → full uncropped frame saved to disk
+///   2. [ManualCropEditor] → user adjusts corner handles on the full image
+///   3. [captureDocument] → perspective correction applied with confirmed corners
 class CameraPageNative extends ConsumerStatefulWidget {
   const CameraPageNative({super.key, this.existingDocId});
   final int? existingDocId;
@@ -41,7 +32,6 @@ class CameraPageNative extends ConsumerStatefulWidget {
 class _CameraPageNativeState extends ConsumerState<CameraPageNative>
     with SingleTickerProviderStateMixin {
   List<double> _corners = [];
-  List<double> _displayCorners = [];
   int _frameWidth = 1920;
   int _frameHeight = 1080;
   bool _isCameraReady = false;
@@ -66,7 +56,8 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
     _countdownCtrl = AnimationController(
       vsync: this,
       duration: Duration(
-        milliseconds: (kAutoCaptureLockFrames * (1000 / 30)).round(), // ~30 fps
+        milliseconds:
+            (kAutoCaptureLockFrames * (1000 / 30)).round(), // ~30 fps
       ),
     );
     WidgetsBinding.instance.addPostFrameCallback(
@@ -130,8 +121,6 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
         _corners = corners;
         _frameWidth = frameWidth;
         _frameHeight = frameHeight;
-        // Blend display corners toward the new target for silky-smooth overlay
-        _displayCorners = _blendCorners(_displayCorners, corners);
       });
     }
 
@@ -152,8 +141,8 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
       }
     } else {
       _resetStability();
-      _previousCorners = List.from(corners);
     }
+    _previousCorners = List.from(corners);
   }
 
   bool _cornersAreStable(List<double> corners) {
@@ -164,17 +153,6 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
       }
     }
     return true;
-  }
-
-  /// Lerp display corners toward target for silky-smooth overlay animation.
-  List<double> _blendCorners(List<double> current, List<double> target) {
-    if (current.length != target.length || current.length < 8) {
-      return List<double>.from(target);
-    }
-    return List<double>.generate(target.length, (i) {
-      return current[i] +
-          ((target[i] - current[i]) * kCornerOverlaySmoothing);
-    });
   }
 
   void _resetStability() {
@@ -224,35 +202,27 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
     try {
       if (!auto) HapticFeedback.mediumImpact();
 
-      // Capture the page from native using the latest detected corners.
-      final capturedPath = await ScannerBridge.captureDocument(
-        List<double>.from(_corners),
-      );
+      // Step 1 — capture raw uncropped frame so the crop editor shows the full image
+      final rawPath = await ScannerBridge.captureRaw();
       if (!mounted) return;
 
-      final capturedSize = await _getImageSize(capturedPath);
-      if (!mounted) return;
-
-      final initialCorners = _fullImageCorners(capturedSize);
-
-      // Open the crop editor so the user can refine the captured page.
+      // Step 2 — open crop editor on the full raw image with current detected corners
       final adjustedCorners = await Navigator.of(context).push<List<double>>(
         MaterialPageRoute(
           fullscreenDialog: true,
           builder: (_) => ManualCropEditor(
-            imagePath: capturedPath,
-            initialCorners: initialCorners,
-            imageWidth: capturedSize.width.round(),
-            imageHeight: capturedSize.height.round(),
+            imagePath: rawPath,
+            initialCorners: List<double>.from(_corners),
+            imageWidth: _frameWidth,
+            imageHeight: _frameHeight,
           ),
         ),
       );
 
       if (!mounted) return;
 
-      // If the user cancelled the crop editor, discard this capture.
+      // User cancelled the crop editor — discard
       if (adjustedCorners == null) {
-        await _deleteFileIfExists(capturedPath);
         setState(() {
           _isProcessing = false;
           _autoCaptureTriggered = false;
@@ -260,11 +230,8 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
         return;
       }
 
-      // If corners were adjusted, re-run perspective correction with new corners
-      final cornersUnchanged = listEquals(adjustedCorners, _corners);
-      final finalPath = cornersUnchanged
-          ? capturedPath
-          : await ScannerBridge.captureDocument(adjustedCorners);
+      // Step 3 — apply perspective correction with the confirmed corners
+      final finalPath = await ScannerBridge.captureDocument(adjustedCorners);
 
       setState(() {
         _capturedImages.add(finalPath);
@@ -333,35 +300,6 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
       if (mounted) {
         showSnackBar(context, 'Failed to save document: $e', isError: true);
       }
-    }
-  }
-
-  Future<Size> _getImageSize(String path) async {
-    final bytes = await File(path).readAsBytes();
-    final decoded = img.decodeImage(bytes);
-    if (decoded == null) {
-      throw Exception('Failed to decode captured image');
-    }
-    return Size(decoded.width.toDouble(), decoded.height.toDouble());
-  }
-
-  List<double> _fullImageCorners(Size size) {
-    return <double>[
-      0.0,
-      0.0,
-      size.width,
-      0.0,
-      size.width,
-      size.height,
-      0.0,
-      size.height,
-    ];
-  }
-
-  Future<void> _deleteFileIfExists(String path) async {
-    final file = File(path);
-    if (await file.exists()) {
-      await file.delete();
     }
   }
 
@@ -482,15 +420,14 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
                 animation: _countdownCtrl,
                 builder: (context, child) => CustomPaint(
                   painter: DocumentEdgeOverlayPainter(
-                    corners: _displayCorners,
+                    corners: _corners,
                     frameWidth: _frameWidth,
                     frameHeight: _frameHeight,
                     strokeWidth: 2.5,
                     color: _getOverlayColor(),
                     fillColor: _getOverlayColor().withValues(alpha: 0.10),
-                    stableFrameCount: _autoCaptureEnabled
-                        ? _stableFrameCount
-                        : 0,
+                    stableFrameCount:
+                        _autoCaptureEnabled ? _stableFrameCount : 0,
                     autoCaptureTotalFrames: kAutoCaptureLockFrames,
                   ),
                 ),
@@ -521,8 +458,8 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
                     child: Text(
                       _corners.length >= 8
                           ? (_autoCaptureEnabled
-                                ? 'Hold still…'
-                                : 'Document detected')
+                              ? 'Hold still…'
+                              : 'Document detected')
                           : 'Align with a document',
                       style: const TextStyle(
                         color: Colors.white,
@@ -560,7 +497,6 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
                       ),
                       child: Row(
                         children: [
-                          // Flash toggle
                           IconButton(
                             icon: Icon(
                               _flashOn ? Icons.flash_on : Icons.flash_off,
@@ -571,7 +507,6 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
                               ScannerBridge.setFlash(_flashOn);
                             },
                           ),
-                          // Auto-capture toggle
                           IconButton(
                             icon: Icon(
                               _autoCaptureEnabled
@@ -591,7 +526,6 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
                               });
                             },
                           ),
-                          // Gallery import
                           IconButton(
                             icon: const Icon(
                               Icons.photo_library,
@@ -617,17 +551,14 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        Icons.error_outline,
-                        size: 64,
-                        color: Colors.red[300],
-                      ),
+                      Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
                       const SizedBox(height: 16),
                       Text(
                         'Camera Error',
-                        style: Theme.of(
-                          context,
-                        ).textTheme.titleLarge?.copyWith(color: Colors.white),
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleLarge
+                            ?.copyWith(color: Colors.white),
                       ),
                       const SizedBox(height: 8),
                       Padding(
@@ -635,7 +566,9 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
                         child: Text(
                           _error!,
                           textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodyMedium
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
                               ?.copyWith(color: Colors.white70),
                         ),
                       ),
@@ -671,7 +604,6 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Thumbnail strip
                     if (_capturedImages.isNotEmpty)
                       SizedBox(
                         height: 60,
@@ -698,7 +630,6 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
                         ),
                       ),
                     const SizedBox(height: 16),
-                    // Capture button
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [_buildCaptureButton()],
