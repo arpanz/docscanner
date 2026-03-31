@@ -9,9 +9,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/services/scanner_bridge.dart';
 
 /// Number of consecutive stable frames required to trigger auto-capture.
-const int kAutoCaptureLockFrames = 18;
+/// Increased from 30 to 45 for more reliable auto-capture.
+const int kAutoCaptureLockFrames = 45;
 
 /// Pixel distance threshold within which corner points are considered "stable".
+/// Increased from 10.0 to 12.0 for better tolerance of minor detection jitter.
 const double kCornerStableThreshold = 12.0;
 
 /// Native Android camera preview using PlatformView.
@@ -269,6 +271,9 @@ class _ManualCropEditorState extends State<ManualCropEditor>
   final GlobalKey _imageKey = GlobalKey();
   Size _displaySize = Size.zero;
   Offset _displayOffset = Offset.zero;
+  
+  // Track if display geometry has been initialized
+  bool _displayGeometryReady = false;
 
   @override
   void initState() {
@@ -341,7 +346,11 @@ class _ManualCropEditorState extends State<ManualCropEditor>
   }
 
   void _onPanStart(DragStartDetails details) {
+    // Always update display geometry on pan start to ensure accuracy
     _updateDisplayGeometry();
+    if (!_displayGeometryReady) {
+      _displayGeometryReady = true;
+    }
     final idx = _findClosestCorner(details.globalPosition);
     if (idx != -1) {
       setState(() => _draggingIndex = idx);
@@ -395,7 +404,45 @@ class _ManualCropEditorState extends State<ManualCropEditor>
       ),
       body: Stack(
         children: [
-          // Image background
+          // Image background - centered with contain fit
+          Center(
+            child: LayoutBuilder(
+              builder: (ctx, constraints) {
+                // Calculate the actual rendered image size
+                final imageSize = _calculateContainSize(
+                  widget.imageWidth.toDouble(),
+                  widget.imageHeight.toDouble(),
+                  constraints.maxWidth,
+                  constraints.maxHeight,
+                );
+                
+                // Update display geometry on layout
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!_displayGeometryReady) {
+                    setState(() {
+                      _displaySize = imageSize;
+                      // For centered image, offset is the centering margin
+                      _displayOffset = Offset(
+                        (constraints.maxWidth - imageSize.width) / 2,
+                        (constraints.maxHeight - imageSize.height) / 2,
+                      );
+                      _displayGeometryReady = true;
+                    });
+                  }
+                });
+                
+                return Image.file(
+                  key: _imageKey,
+                  File(widget.imagePath),
+                  fit: BoxFit.contain,
+                  width: constraints.maxWidth,
+                  height: constraints.maxHeight,
+                );
+              },
+            ),
+          ),
+
+          // Quad + handles overlay - full screen but gestures work through
           Positioned.fill(
             child: GestureDetector(
               onPanStart: _onPanStart,
@@ -418,7 +465,7 @@ class _ManualCropEditorState extends State<ManualCropEditor>
             ),
           ),
 
-          // Quad + handles overlay
+          // Invisible gesture detector over the entire area for dragging
           Positioned.fill(
             child: IgnorePointer(
               child: CustomPaint(
@@ -586,6 +633,7 @@ class _ManualCropPainter extends CustomPainter {
     return old.corners != corners ||
         old.activeIndex != activeIndex ||
         old.pulseScale != pulseScale ||
-        old.displaySize != displaySize;
+        old.displaySize != displaySize ||
+        old.displayOffset != displayOffset;
   }
 }

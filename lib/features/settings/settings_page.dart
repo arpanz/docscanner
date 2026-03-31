@@ -31,23 +31,29 @@ class SettingsPage extends ConsumerWidget {
               themeMode == ThemeMode.dark
                   ? Icons.dark_mode_outlined
                   : themeMode == ThemeMode.light
-                      ? Icons.light_mode_outlined
-                      : Icons.brightness_auto_outlined,
+                  ? Icons.light_mode_outlined
+                  : Icons.brightness_auto_outlined,
             ),
-            title: Text('Theme', style: const TextStyle(fontWeight: FontWeight.w800)),
+            title: Text(
+              'Theme',
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
             subtitle: Text(
               themeMode == ThemeMode.dark
                   ? 'Dark'
                   : themeMode == ThemeMode.light
-                      ? 'Light'
-                      : 'System default',
+                  ? 'Light'
+                  : 'System default',
             ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _showThemeDialog(context, ref, themeMode),
           ),
           ListTile(
             leading: const Icon(Icons.picture_as_pdf_outlined),
-            title: Text('Default PDF page size', style: const TextStyle(fontWeight: FontWeight.w800)),
+            title: Text(
+              'Default PDF page size',
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
             subtitle: Text(pageSize.label),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _showPageSizeDialog(context, ref, pageSize),
@@ -56,8 +62,14 @@ class SettingsPage extends ConsumerWidget {
           const _SectionHeader('Storage'),
           ListTile(
             leading: const Icon(Icons.folder_outlined),
-            title: Text('Clear app cache', style: const TextStyle(fontWeight: FontWeight.w800)),
-            subtitle: Text('Removes generated thumbnails and temporary edit files', style: const TextStyle(fontWeight: FontWeight.w800)),
+            title: Text(
+              'Clear app cache',
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+            subtitle: Text(
+              'Removes generated thumbnails and temporary edit files',
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _clearCache(context),
           ),
@@ -69,10 +81,15 @@ class SettingsPage extends ConsumerWidget {
               final version = snapshot.data?.version ?? '...';
               return ListTile(
                 leading: const Icon(Icons.info_outline),
-                title: Text('Version', style: const TextStyle(fontWeight: FontWeight.w800)),
+                title: Text(
+                  'Version',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
                 trailing: Text(
                   version,
-                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 onTap: () => showAboutDialog(
                   context: context,
@@ -88,7 +105,11 @@ class SettingsPage extends ConsumerWidget {
     );
   }
 
-  void _showThemeDialog(BuildContext context, WidgetRef ref, ThemeMode current) {
+  void _showThemeDialog(
+    BuildContext context,
+    WidgetRef ref,
+    ThemeMode current,
+  ) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -182,7 +203,9 @@ class SettingsPage extends ConsumerWidget {
       if (context.mounted) {
         showSnackBar(
           context,
-          deleted == 0 ? 'Cache is already empty' : 'Cleared $deleted cached item${deleted == 1 ? '' : 's'}',
+          deleted == 0
+              ? 'Cache is already empty'
+              : 'Cleared $deleted cached item${deleted == 1 ? '' : 's'}',
         );
       }
     } catch (e) {
@@ -201,7 +224,8 @@ class SettingsPage extends ConsumerWidget {
     var count = 0;
     await for (final entity in cacheDir.list()) {
       final name = p.basename(entity.path);
-      final isKnownFile = entity is File &&
+      final isKnownFile =
+          entity is File &&
           (name.startsWith('scan_append_') ||
               name.startsWith('scan_') ||
               name.startsWith('ocr_'));

@@ -191,7 +191,10 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Create PDF', style: const TextStyle(fontWeight: FontWeight.w800)),
+        title: Text(
+          'Create PDF',
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
         content: Text(
           'Create a PDF from ${validPaths.length} $scopeLabel image${validPaths.length == 1 ? '' : 's'}?',
         ),
@@ -484,7 +487,10 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
           children: [
             ListTile(
               leading: const Icon(Icons.auto_fix_high_rounded),
-              title: Text('Edit this image', style: const TextStyle(fontWeight: FontWeight.w800)),
+              title: Text(
+                'Edit this image',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
               onTap: () {
                 Navigator.pop(ctx);
                 _editImages(
@@ -497,7 +503,10 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
             ),
             ListTile(
               leading: const Icon(Icons.picture_as_pdf),
-              title: Text('Create PDF from this image', style: const TextStyle(fontWeight: FontWeight.w800)),
+              title: Text(
+                'Create PDF from this image',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
               onTap: () {
                 Navigator.pop(ctx);
                 _createPdfForPaths([imagePath], scopeLabel: 'this');
@@ -505,7 +514,10 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
             ),
             ListTile(
               leading: const Icon(Icons.share),
-              title: Text('Share this image', style: const TextStyle(fontWeight: FontWeight.w800)),
+              title: Text(
+                'Share this image',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
               onTap: () {
                 Navigator.pop(ctx);
                 _sharePaths([imagePath], scopeLabel: 'this image');
@@ -513,7 +525,10 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
             ),
             ListTile(
               leading: const Icon(Icons.text_snippet_outlined),
-              title: Text('Extract text from this image', style: const TextStyle(fontWeight: FontWeight.w800)),
+              title: Text(
+                'Extract text from this image',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
               onTap: () {
                 Navigator.pop(ctx);
                 _extractTextForPaths([
@@ -524,7 +539,10 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
             if (_document?.pdfPath != null)
               ListTile(
                 leading: const Icon(Icons.visibility_outlined),
-                title: Text('View current PDF', style: const TextStyle(fontWeight: FontWeight.w800)),
+                title: Text(
+                  'View current PDF',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
                 onTap: () {
                   Navigator.pop(ctx);
                   _viewPdf();
@@ -535,7 +553,10 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                 Icons.delete_outline,
                 color: Theme.of(ctx).colorScheme.error,
               ),
-              title: Text('Delete this image', style: const TextStyle(fontWeight: FontWeight.w800)),
+              title: Text(
+                'Delete this image',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
               onTap: () {
                 Navigator.pop(ctx);
                 _deletePaths([imagePath], scopeLabel: 'this');
@@ -595,12 +616,12 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
     try {
       await ref.read(documentServiceProvider).backupOriginalImage(imagePath);
       final processedPath = await compute(
-        applyImageEdits,
+        applyImageEditsFromMap,
         ImageEditArgs(
           inputPath: imagePath,
           outputPath: tempPath,
           options: options,
-        ),
+        ).toMap(),
       );
 
       await File(processedPath).copy(imagePath);
@@ -1004,58 +1025,76 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                               icon: Icons.auto_fix_high_rounded,
                               label: _selectMode ? 'Edit Selected' : 'Edit All',
                               color: cs.tertiary,
-                              onPressed: (_isEditing || (_selectMode && _selectedImages.isEmpty))
+                              onPressed:
+                                  (_isEditing ||
+                                      (_selectMode && _selectedImages.isEmpty))
                                   ? null
-                                  : (_selectMode ? _editSelected : _editAllPages),
+                                  : (_selectMode
+                                        ? _editSelected
+                                        : _editAllPages),
                             ),
                             const SizedBox(width: 10),
                             _ActionChip(
                               icon: Icons.picture_as_pdf,
                               label: _selectMode ? 'PDF Selected' : 'PDF All',
                               color: cs.secondary,
-                              onPressed: (_isEditing || (_selectMode && _selectedImages.isEmpty))
+                              onPressed:
+                                  (_isEditing ||
+                                      (_selectMode && _selectedImages.isEmpty))
                                   ? null
                                   : (_selectMode ? _createPdf : _createPdfAll),
                             ),
                             const SizedBox(width: 10),
                             _ActionChip(
                               icon: Icons.share,
-                              label: _selectMode ? 'Share Selected' : 'Share All',
+                              label: _selectMode
+                                  ? 'Share Selected'
+                                  : 'Share All',
                               color: cs.primary,
-                              onPressed: (_isEditing || (_selectMode && _selectedImages.isEmpty))
+                              onPressed:
+                                  (_isEditing ||
+                                      (_selectMode && _selectedImages.isEmpty))
                                   ? null
                                   : (_selectMode ? _shareSelected : _shareAll),
                             ),
-                          if (_document?.pdfPath != null) ...[
+                            if (_document?.pdfPath != null) ...[
+                              const SizedBox(width: 10),
+                              _ActionChip(
+                                icon: Icons.visibility_outlined,
+                                label: 'View PDF',
+                                color: cs.primary,
+                                onPressed: _viewPdf,
+                              ),
+                            ],
                             const SizedBox(width: 10),
                             _ActionChip(
-                              icon: Icons.visibility_outlined,
-                              label: 'View PDF',
+                              icon: Icons.text_snippet_outlined,
+                              label: _selectMode ? 'OCR Selected' : 'OCR All',
                               color: cs.primary,
-                              onPressed: _viewPdf,
+                              onPressed:
+                                  (_isEditing ||
+                                      (_selectMode && _selectedImages.isEmpty))
+                                  ? null
+                                  : () =>
+                                        _extractText(useSelected: _selectMode),
+                            ),
+                            const SizedBox(width: 10),
+                            OutlinedButton.icon(
+                              onPressed:
+                                  (_isEditing ||
+                                      (_selectMode && _selectedImages.isEmpty))
+                                  ? null
+                                  : (_selectMode
+                                        ? _deleteSelected
+                                        : _deleteAll),
+                              icon: Icon(Icons.delete_outline, color: cs.error),
+                              label: Text(
+                                _selectMode ? 'Delete Selected' : 'Delete All',
+                                style: TextStyle(color: cs.error),
+                              ),
                             ),
                           ],
-                          const SizedBox(width: 10),
-                          _ActionChip(
-                            icon: Icons.text_snippet_outlined,
-                            label: _selectMode ? 'OCR Selected' : 'OCR All',
-                            color: cs.primary,
-                            onPressed: (_isEditing || (_selectMode && _selectedImages.isEmpty))
-                                ? null
-                                : () => _extractText(useSelected: _selectMode),
-                          ),
-                          const SizedBox(width: 10),
-                          OutlinedButton.icon(
-                            onPressed: (_isEditing || (_selectMode && _selectedImages.isEmpty))
-                                ? null
-                                : (_selectMode ? _deleteSelected : _deleteAll),
-                            icon: Icon(Icons.delete_outline, color: cs.error),
-                            label: Text(
-                              _selectMode ? 'Delete Selected' : 'Delete All',
-                              style: TextStyle(color: cs.error),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
@@ -1135,7 +1174,10 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
     final newTitle = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Rename document', style: const TextStyle(fontWeight: FontWeight.w800)),
+        title: Text(
+          'Rename document',
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
         content: TextField(
           controller: ctrl,
           autofocus: true,
@@ -1176,7 +1218,10 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Delete document?', style: const TextStyle(fontWeight: FontWeight.w800)),
+        title: Text(
+          'Delete document?',
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
         content: Text(
           'Are you sure you want to delete "${_document!.title}"? This cannot be undone.',
         ),
@@ -1616,7 +1661,10 @@ class _FullScreenImageViewerState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Create PDF', style: const TextStyle(fontWeight: FontWeight.w800)),
+        title: Text(
+          'Create PDF',
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
         content: const Text('Create a PDF from this page?'),
         actions: [
           TextButton(
@@ -1730,7 +1778,10 @@ class _FullScreenImageViewerState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Delete this page?', style: const TextStyle(fontWeight: FontWeight.w800)),
+        title: Text(
+          'Delete this page?',
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
         content: const Text('This page will be deleted permanently.'),
         actions: [
           TextButton(
@@ -1817,12 +1868,12 @@ class _FullScreenImageViewerState
     try {
       await ref.read(documentServiceProvider).backupOriginalImage(imagePath);
       final processedPath = await compute(
-        applyImageEdits,
+        applyImageEditsFromMap,
         ImageEditArgs(
           inputPath: imagePath,
           outputPath: tempPath,
           options: options,
-        ),
+        ).toMap(),
       );
 
       await File(processedPath).copy(imagePath);

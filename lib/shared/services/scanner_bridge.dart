@@ -4,20 +4,21 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 
 /// Native scanner bridge for Android.
-/// 
+///
 /// Provides access to CameraX + OpenCV powered document scanning.
 /// Falls back to no-op on iOS (use flutter_doc_scanner for iOS).
 class ScannerBridge {
-  static const MethodChannel _methodChannel =
-      MethodChannel('com.example.docscanner/scanner');
-  static const EventChannel _eventChannel =
-      EventChannel('com.example.docscanner/edges');
+  static const MethodChannel _methodChannel = MethodChannel(
+    'com.example.docscanner/scanner',
+  );
+  static const EventChannel _eventChannel = EventChannel(
+    'com.example.docscanner/edges',
+  );
 
   /// Stream of detected document corners from OpenCV.
   /// Returns [EdgeDetectionData] with corners and frame dimensions.
-  static Stream<EdgeDetectionData> get edgeStream => _eventChannel
-      .receiveBroadcastStream()
-      .map((event) {
+  static Stream<EdgeDetectionData> get edgeStream =>
+      _eventChannel.receiveBroadcastStream().map((event) {
         final data = Map<String, dynamic>.from(event);
         final corners = List<double>.from(data['corners'] ?? []);
         final frameWidth = (data['frameWidth'] ?? 0).toInt();
@@ -50,7 +51,7 @@ class ScannerBridge {
   }
 
   /// Capture a document with perspective correction.
-  /// 
+  ///
   /// [corners] The 4 corner points of the document to extract.
   /// Returns the file path of the processed image.
   static Future<String> captureDocument(List<double> corners) async {
@@ -64,8 +65,23 @@ class ScannerBridge {
     return result ?? '';
   }
 
+  /// Crop an existing image using the provided quadrilateral corners.
+  ///
+  /// [corners] The 4 corner points of the document to extract.
+  /// Returns the path to the cropped image.
+  static Future<String> cropImage(String path, List<double> corners) async {
+    if (!Platform.isAndroid) {
+      throw UnsupportedError('ScannerBridge is only available on Android');
+    }
+    final result = await _methodChannel.invokeMethod<String>('cropImage', {
+      'path': path,
+      'corners': corners,
+    });
+    return (result == null || result.isEmpty) ? path : result;
+  }
+
   /// Apply an enhancement filter to an image.
-  /// 
+  ///
   /// [path] Path to the input image.
   /// [mode] One of: 'photo', 'magic_color', 'grayscale', 'black_white', 'whiteboard'.
   /// Returns the path to the enhanced image.
@@ -73,15 +89,15 @@ class ScannerBridge {
     if (!Platform.isAndroid) {
       throw UnsupportedError('ScannerBridge is only available on Android');
     }
-    final result = await _methodChannel.invokeMethod<String>(
-      'enhanceImage',
-      {'path': path, 'mode': mode},
-    );
-    return result ?? path;
+    final result = await _methodChannel.invokeMethod<String>('enhanceImage', {
+      'path': path,
+      'mode': mode,
+    });
+    return (result == null || result.isEmpty) ? path : result;
   }
 
   /// Build a PDF from a list of image paths.
-  /// 
+  ///
   /// [images] List of image file paths.
   /// [title] Document title for the PDF filename.
   /// Returns the path to the generated PDF.
@@ -89,37 +105,30 @@ class ScannerBridge {
     if (!Platform.isAndroid) {
       throw UnsupportedError('ScannerBridge is only available on Android');
     }
-    final result = await _methodChannel.invokeMethod<String>(
-      'buildPdf',
-      {'images': images, 'title': title},
-    );
+    final result = await _methodChannel.invokeMethod<String>('buildPdf', {
+      'images': images,
+      'title': title,
+    });
     return result ?? '';
   }
 
   /// Extract text from an image using ML Kit OCR.
-  /// 
+  ///
   /// [path] Path to the image file.
   /// Returns the extracted text.
   static Future<String> extractText(String path) async {
     if (!Platform.isAndroid) {
       throw UnsupportedError('ScannerBridge is only available on Android');
     }
-    final result = await _methodChannel.invokeMethod<String>(
-      'extractText',
-      {'path': path},
-    );
+    final result = await _methodChannel.invokeMethod<String>('extractText', {
+      'path': path,
+    });
     return result ?? '';
   }
 }
 
 /// Enhancement modes available for document processing.
-enum EnhancementMode {
-  photo,
-  magicColor,
-  grayscale,
-  blackWhite,
-  whiteboard,
-}
+enum EnhancementMode { photo, magicColor, grayscale, blackWhite, whiteboard }
 
 extension EnhancementModeExtension on EnhancementMode {
   String get nativeName {

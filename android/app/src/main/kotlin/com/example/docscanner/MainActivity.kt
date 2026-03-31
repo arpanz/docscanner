@@ -105,6 +105,11 @@ class MainActivity : FlutterActivity() {
                         val corners = call.argument<List<Double>>("corners") ?: emptyList()
                         captureDocument(corners, result)
                     }
+                    "cropImage" -> {
+                        val path = call.argument<String>("path") ?: ""
+                        val corners = call.argument<List<Double>>("corners") ?: emptyList()
+                        cropImage(path, corners, result)
+                    }
                     "enhanceImage" -> {
                         val path = call.argument<String>("path") ?: ""
                         val mode = call.argument<String>("mode") ?: "photo"
@@ -218,6 +223,21 @@ class MainActivity : FlutterActivity() {
         scannerEngine?.captureDocument(corners) { imagePath ->
             CoroutineScope(Dispatchers.Main).launch {
                 result.success(imagePath)
+            }
+        }
+    }
+
+    private fun cropImage(path: String, corners: List<Double>, result: MethodChannel.Result) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val croppedPath = scannerEngine?.cropImage(path, corners)
+                CoroutineScope(Dispatchers.Main).launch {
+                    result.success(croppedPath)
+                }
+            } catch (e: Exception) {
+                CoroutineScope(Dispatchers.Main).launch {
+                    result.error("CROP_ERROR", e.message, null)
+                }
             }
         }
     }

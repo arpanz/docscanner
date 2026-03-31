@@ -69,14 +69,40 @@ class ImageEditArgs {
   final String inputPath;
   final String outputPath;
   final ImageEditOptions options;
+
+  Map<String, Object?> toMap() {
+    return {
+      'inputPath': inputPath,
+      'outputPath': outputPath,
+      'filter': options.filter.name,
+      'brightness': options.brightness,
+      'contrast': options.contrast,
+      'rotationTurns': options.rotationTurns,
+    };
+  }
 }
 
 String applyImageEdits(ImageEditArgs args) {
-  final bytes = File(args.inputPath).readAsBytesSync();
+  return applyImageEditsFromMap(args.toMap());
+}
+
+String applyImageEditsFromMap(Map<String, Object?> rawArgs) {
+  final inputPath = rawArgs['inputPath'] as String;
+  final outputPath = rawArgs['outputPath'] as String;
+  final filterName = rawArgs['filter'] as String? ?? FilterMode.original.name;
+  final brightness = (rawArgs['brightness'] as num?)?.toDouble() ?? 0.0;
+  final contrast = (rawArgs['contrast'] as num?)?.toDouble() ?? 1.0;
+  final rotationTurns = (rawArgs['rotationTurns'] as num?)?.toInt() ?? 0;
+  final filter = FilterMode.values.firstWhere(
+    (mode) => mode.name == filterName,
+    orElse: () => FilterMode.original,
+  );
+
+  final bytes = File(inputPath).readAsBytesSync();
   var image = img.decodeImage(bytes);
   if (image == null) throw Exception('Failed to decode image');
 
-  switch (args.options.filter) {
+  switch (filter) {
     case FilterMode.original:
       break;
     case FilterMode.grayscale:
@@ -97,13 +123,8 @@ String applyImageEdits(ImageEditArgs args) {
       break;
   }
 
-  if (args.options.brightness.abs() > 0.001 ||
-      (args.options.contrast - 1).abs() > 0.001) {
-    image = img.adjustColor(
-      image,
-      brightness: args.options.brightness,
-      contrast: args.options.contrast,
-    );
+  if (brightness.abs() > 0.001 || (contrast - 1).abs() > 0.001) {
+    image = img.adjustColor(image, brightness: brightness, contrast: contrast);
   }
 
   final turns = args.options.rotationTurns % 4;
@@ -115,8 +136,8 @@ String applyImageEdits(ImageEditArgs args) {
     image = img.copyRotate(image, angle: 270);
   }
 
-  File(args.outputPath).writeAsBytesSync(img.encodeJpg(image, quality: 95));
-  return args.outputPath;
+  File(outputPath).writeAsBytesSync(img.encodeJpg(image, quality: 95));
+  return outputPath;
 }
 
 img.Image _threshold(img.Image image, int threshold) {
