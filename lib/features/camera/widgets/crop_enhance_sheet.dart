@@ -127,7 +127,7 @@ String applyImageEditsFromMap(Map<String, Object?> rawArgs) {
     image = img.adjustColor(image, brightness: brightness, contrast: contrast);
   }
 
-  final turns = args.options.rotationTurns % 4;
+  final turns = rotationTurns % 4;
   if (turns == 1) {
     image = img.copyRotate(image, angle: 90);
   } else if (turns == 2) {

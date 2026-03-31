@@ -130,6 +130,8 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
         _corners = corners;
         _frameWidth = frameWidth;
         _frameHeight = frameHeight;
+        // Blend display corners toward the new target for silky-smooth overlay
+        _displayCorners = _blendCorners(_displayCorners, corners);
       });
     }
 
@@ -150,19 +152,8 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
       }
     } else {
       _resetStability();
+      _previousCorners = List.from(corners);
     }
-    _previousCorners = List.from(corners);
-  }
-
-  List<double> _blendCorners(List<double> current, List<double> target) {
-    if (current.length != target.length || current.length < 8) {
-      return List<double>.from(target);
-    }
-
-    return List<double>.generate(target.length, (index) {
-      return current[index] +
-          ((target[index] - current[index]) * kCornerOverlaySmoothing);
-    });
   }
 
   bool _cornersAreStable(List<double> corners) {
@@ -173,6 +164,17 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
       }
     }
     return true;
+  }
+
+  /// Lerp display corners toward target for silky-smooth overlay animation.
+  List<double> _blendCorners(List<double> current, List<double> target) {
+    if (current.length != target.length || current.length < 8) {
+      return List<double>.from(target);
+    }
+    return List<double>.generate(target.length, (i) {
+      return current[i] +
+          ((target[i] - current[i]) * kCornerOverlaySmoothing);
+    });
   }
 
   void _resetStability() {
@@ -261,7 +263,7 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
       // If corners were adjusted, re-run perspective correction with new corners
       final cornersUnchanged = listEquals(adjustedCorners, _corners);
       final finalPath = cornersUnchanged
-          ? rawPath
+          ? capturedPath
           : await ScannerBridge.captureDocument(adjustedCorners);
 
       setState(() {

@@ -49,6 +49,12 @@ class MainActivity : FlutterActivity() {
             // Store reference in activity
             activity.previewView = previewView
             
+            if (activity.pendingCameraStart) {
+                activity.pendingCameraStart = false
+                activity.startCamera(activity.pendingCameraResult)
+                activity.pendingCameraResult = null
+            }
+            
             return object : PlatformView {
                 override fun getView(): View = container
                 
@@ -68,6 +74,9 @@ class MainActivity : FlutterActivity() {
     private var edgeEventSink: EventChannel.EventSink? = null
     private var previewView: PreviewView? = null
     private var hasFlashTorch: Boolean = false
+    
+    var pendingCameraStart: Boolean = false
+    var pendingCameraResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -86,12 +95,7 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "startCamera" -> {
-                        val started = startCamera()
-                        if (started) {
-                            result.success(null)
-                        } else {
-                            result.error("PREVIEW_NOT_READY", "Camera preview surface not ready", null)
-                        }
+                        startCamera(result)
                     }
                     "stopCamera" -> {
                         stopCamera()
@@ -147,29 +151,26 @@ class MainActivity : FlutterActivity() {
         scannerEngine = null
     }
 
-    private fun startCamera(): Boolean {
+    fun startCamera(result: MethodChannel.Result? = null) {
         // Check camera permission
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED
         ) {
+            pendingCameraResult = result
             ActivityCompat.requestPermissions(
                 this,
                 arrayOf(Manifest.permission.CAMERA),
                 REQUEST_CAMERA_PERMISSION
             )
-            return false
+            return
         }
 
-        // Start camera with the PreviewView from PlatformView
         runOnUiThread {
             val currentPreviewView = previewView
             if (currentPreviewView == null) {
-                // PreviewView not yet created by PlatformView
-                edgeEventSink?.error(
-                    "PREVIEW_NOT_READY",
-                    "Camera preview is not ready yet",
-                    null
-                )
+                // PreviewView not yet created by PlatformView, defer it
+                pendingCameraStart = true
+                pendingCameraResult = result
                 return@runOnUiThread
             }
 
@@ -193,8 +194,9 @@ class MainActivity : FlutterActivity() {
                     edgeEventSink?.error("SCANNER_ERROR", error, null)
                 }
             }
+            
+            result?.success(null)
         }
-        return true
     }
 
     private fun stopCamera() {
@@ -293,9 +295,12 @@ class MainActivity : FlutterActivity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_CAMERA_PERMISSION) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                startCamera()
+                startCamera(pendingCameraResult)
+                pendingCameraResult = null
             } else {
                 // Permission denied - notify Flutter
+                pendingCameraResult?.error("PERMISSION_DENIED", "Camera permission is required", null)
+                pendingCameraResult = null
                 edgeEventSink?.error(
                     "PERMISSION_DENIED",
                     "Camera permission is required for scanning",

@@ -78,6 +78,14 @@ class ScannerEngine(
     private var lastAnalyzedFrameWidth: Int = 0
     private var lastAnalyzedFrameHeight: Int = 0
 
+    // ── Temporal smoothing (EMA) state ──────────────────────────────────────
+    // Keeps the overlay glued to the document instead of flickering.
+    private var smoothedCorners: List<Double>? = null
+    private var noDetectionCount = 0
+    private val emaAlpha = 0.30              // 30 % new, 70 % old → silky smooth
+    private val snapDistanceThreshold = 80.0 // px – snap immediately on big jumps
+    private val maxNoDetectionFrames = 6     // reset after 6 consecutive misses
+
     // Callbacks
     var onFrameAnalyzed: ((Bitmap, List<Double>, Int, Int) -> Unit)? = null
     var onEdgeDetected: ((List<Double>, Int, Int) -> Unit)? = null
@@ -148,6 +156,7 @@ class ScannerEngine(
                     imageAnalyzer = ImageAnalysis.Builder()
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                         .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+                        .setTargetResolution(android.util.Size(1280, 720))
                         .build()
                         .also { analysis ->
                             analysis.setAnalyzer(cameraExecutor) { imageProxy ->
@@ -161,11 +170,22 @@ class ScannerEngine(
                                     lastAnalyzedFrameWidth = frameWidth
                                     lastAnalyzedFrameHeight = frameHeight
 
-                                    // Send corners + frame dimensions to Flutter for overlay drawing
-                                    corners?.let {
-                                        val cornerList = flattenCorners(it)
-                                        onEdgeDetected?.invoke(cornerList, frameWidth, frameHeight)
-                                        onFrameAnalyzed?.invoke(bitmap, cornerList, frameWidth, frameHeight)
+                                    if (corners != null) {
+                                        noDetectionCount = 0
+                                        val rawList = flattenCorners(corners)
+                                        val emitted = applyTemporalSmoothing(rawList)
+                                        onEdgeDetected?.invoke(emitted, frameWidth, frameHeight)
+                                        onFrameAnalyzed?.invoke(bitmap, emitted, frameWidth, frameHeight)
+                                    } else {
+                                        noDetectionCount++
+                                        if (noDetectionCount >= maxNoDetectionFrames) {
+                                            smoothedCorners = null      // fade out
+                                        }
+                                        // Keep emitting last smoothed corners so overlay
+                                        // doesn't flash on/off between frames.
+                                        smoothedCorners?.let { prev ->
+                                            onEdgeDetected?.invoke(prev, frameWidth, frameHeight)
+                                        }
                                     }
                                 } catch (t: Throwable) {
                                     Log.e(TAG, "Frame analysis error", t)
@@ -375,19 +395,21 @@ class ScannerEngine(
             kernel.release()
 
             // Find ONLY external contours - avoids picking up internal texture
+            val hierarchy = Mat()
             Imgproc.findContours(
                 closedEdges,
                 contours,
-                null,
+                hierarchy,
                 Imgproc.RETR_EXTERNAL,
                 Imgproc.CHAIN_APPROX_SIMPLE
             )
+            hierarchy.release()
 
             closedEdges.release()
 
             // Find the largest 4-sided contour (the document)
-            // Reasonable minimum area - at least 3% of image to ignore small noise
-            val minArea = (blurred.width() * blurred.height()) * 0.03
+            // Minimum area = 8 % of frame → ignores small objects like cards
+            val minArea = (mat.width() * mat.height()) * 0.08
             return contours
                 .filter { Imgproc.contourArea(it) > minArea }
                 .sortedByDescending { Imgproc.contourArea(it) }
@@ -429,7 +451,7 @@ class ScannerEngine(
         val contrastFactor = stdDev / 50.0  // Normalize around typical document contrast
 
         // Clamp between 50 and 150 for stability
-        return (baseThreshold * (1.0 / (contrastFactor + 0.5))).coerceIn(50.0, 150.0)
+        return (baseThreshold * contrastFactor).coerceIn(50.0, 150.0)
     }
 
     /**
@@ -444,8 +466,8 @@ class ScannerEngine(
 
         val peri = Imgproc.arcLength(contour2f, true)
         val approx = MatOfPoint2f()
-        // Slightly tighter epsilon for more accurate corner detection (0.015 instead of 0.02)
-        Imgproc.approxPolyDP(contour2f, approx, 0.015 * peri, true)
+        // Balanced epsilon – tight enough for accuracy, loose enough so large docs are recognised
+        Imgproc.approxPolyDP(contour2f, approx, 0.02 * peri, true)
         contour2f.release()
 
         if (approx.total() != 4L) {
@@ -875,12 +897,29 @@ class ScannerEngine(
      * Uses copyPixelsFromBuffer for RGBA_8888 format.
      */
     private fun ImageProxy.toBitmap(): Bitmap {
+        val plane = planes[0]
+        val buffer = plane.buffer
+        val pixelStride = plane.pixelStride
+        val rowStride = plane.rowStride
+
         // Create bitmap with correct dimensions and format
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
 
-        // Copy pixels directly from buffer (RGBA_8888 format)
-        val buffer = planes[0].buffer
-        bitmap.copyPixelsFromBuffer(buffer)
+        // Remove padding between rows if present
+        if (rowStride == width * pixelStride) {
+            bitmap.copyPixelsFromBuffer(buffer)
+        } else {
+            val bitmapBuffer = ByteBuffer.allocate(width * height * 4)
+            val rowBytes = ByteArray(width * 4)
+            buffer.rewind()
+            for (row in 0 until height) {
+                buffer.position(row * rowStride)
+                buffer.get(rowBytes, 0, width * 4)
+                bitmapBuffer.put(rowBytes)
+            }
+            bitmapBuffer.rewind()
+            bitmap.copyPixelsFromBuffer(bitmapBuffer)
+        }
 
         // Apply rotation if needed
         val rotationDegrees = imageInfo.rotationDegrees
@@ -894,6 +933,42 @@ class ScannerEngine(
         }
 
         return bitmap
+    }
+
+    /**
+     * EMA (Exponential Moving Average) smoothing for detected corners.
+     *
+     * - Small jitter:  blends 30 % new + 70 % old → silky-smooth overlay
+     * - Large jump:    snaps immediately so the user never sees lag
+     * - No detection:  keeps emitting the last-known corners for a few frames
+     */
+    private fun applyTemporalSmoothing(rawCorners: List<Double>): List<Double> {
+        val prev = smoothedCorners
+        if (prev == null || prev.size != rawCorners.size) {
+            // First detection or size changed — snap
+            smoothedCorners = rawCorners
+            return rawCorners
+        }
+
+        // Compute max per-axis delta to decide snap vs blend
+        var maxDelta = 0.0
+        for (i in rawCorners.indices) {
+            val d = kotlin.math.abs(rawCorners[i] - prev[i])
+            if (d > maxDelta) maxDelta = d
+        }
+
+        return if (maxDelta > snapDistanceThreshold) {
+            // Camera moved a lot — snap to avoid visible lag
+            smoothedCorners = rawCorners
+            rawCorners
+        } else {
+            // Small movement — blend for smoothness
+            val blended = rawCorners.indices.map { i ->
+                prev[i] + emaAlpha * (rawCorners[i] - prev[i])
+            }
+            smoothedCorners = blended
+            blended
+        }
     }
 
     private fun flattenCorners(corners: MatOfPoint2f): List<Double> {

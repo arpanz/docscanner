@@ -321,6 +321,17 @@ class _ManualCropEditorState extends State<ManualCropEditor>
     );
   }
 
+  Size _calculateContainSize(double iw, double ih, double cw, double ch) {
+    if (ih == 0 || iw == 0) return Size.zero;
+    final imageRatio = iw / ih;
+    final containerRatio = cw / ch;
+    if (imageRatio > containerRatio) {
+      return Size(cw, cw / imageRatio);
+    } else {
+      return Size(ch * imageRatio, ch);
+    }
+  }
+
   void _updateDisplayGeometry() {
     final box = _imageKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return;
@@ -448,20 +459,7 @@ class _ManualCropEditorState extends State<ManualCropEditor>
               onPanStart: _onPanStart,
               onPanUpdate: _onPanUpdate,
               onPanEnd: _onPanEnd,
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  WidgetsBinding.instance.addPostFrameCallback(
-                    (_) => _updateDisplayGeometry(),
-                  );
-                  return Image.file(
-                    key: _imageKey,
-                    File(widget.imagePath),
-                    fit: BoxFit.contain,
-                    width: constraints.maxWidth,
-                    height: constraints.maxHeight,
-                  );
-                },
-              ),
+              child: Container(color: Colors.transparent),
             ),
           ),
 
@@ -474,6 +472,7 @@ class _ManualCropEditorState extends State<ManualCropEditor>
                   imageWidth: widget.imageWidth,
                   imageHeight: widget.imageHeight,
                   displaySize: _displaySize,
+                  displayOffset: _displayOffset,
                   activeIndex: _draggingIndex,
                   color: const Color(0xFF5C4BF5),
                   pulseScale: _draggingIndex == -1 ? _pulseAnim.value : 1.0,
@@ -513,6 +512,7 @@ class _ManualCropPainter extends CustomPainter {
     required this.imageWidth,
     required this.imageHeight,
     required this.displaySize,
+    required this.displayOffset,
     required this.activeIndex,
     required this.color,
     required this.pulseScale,
@@ -522,6 +522,7 @@ class _ManualCropPainter extends CustomPainter {
   final int imageWidth;
   final int imageHeight;
   final Size displaySize;
+  final Offset displayOffset;
   final int activeIndex;
   final Color color;
   final double pulseScale;
@@ -530,8 +531,8 @@ class _ManualCropPainter extends CustomPainter {
     if (imageWidth == 0 || imageHeight == 0 || displaySize == Size.zero) {
       return Offset.zero;
     }
-    final sx = (ix / imageWidth) * displaySize.width;
-    final sy = (iy / imageHeight) * displaySize.height;
+    final sx = (ix / imageWidth) * displaySize.width + displayOffset.dx;
+    final sy = (iy / imageHeight) * displaySize.height + displayOffset.dy;
     return Offset(sx, sy);
   }
 

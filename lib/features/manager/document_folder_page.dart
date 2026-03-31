@@ -1099,8 +1099,7 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                     ),
                   ),
                 ),
-              ),
-            )
+              )
             : null,
         floatingActionButton: _reorderMode
             ? null
