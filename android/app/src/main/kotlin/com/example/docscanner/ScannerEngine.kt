@@ -15,6 +15,7 @@ import androidx.lifecycle.LifecycleOwner
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import org.opencv.android.OpenCVLoader
 import org.opencv.android.Utils
 import org.opencv.core.*
 import org.opencv.imgproc.Imgproc
@@ -62,6 +63,9 @@ class ScannerEngine(
     private var imageAnalyzer: ImageAnalysis? = null
     private var imageCapture: ImageCapture? = null
     private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val openCvInitialized: Boolean = initializeOpenCv()
+    @Volatile
+    private var openCvErrorReported = false
 
     // Track current frame dimensions for overlay scaling
     private var currentFrameWidth: Int = 0
@@ -71,6 +75,43 @@ class ScannerEngine(
     var onFrameAnalyzed: ((Bitmap, List<Double>, Int, Int) -> Unit)? = null
     var onEdgeDetected: ((List<Double>, Int, Int) -> Unit)? = null
     var onError: ((String) -> Unit)? = null
+
+    /**
+     * Initialize OpenCV native bindings once for this engine instance.
+     */
+    private fun initializeOpenCv(): Boolean {
+        return try {
+            if (OpenCVLoader.initDebug()) {
+                Log.i(TAG, "OpenCV initialized via OpenCVLoader")
+                true
+            } else {
+                Log.w(TAG, "OpenCVLoader.initDebug() failed, trying manual load")
+                System.loadLibrary("opencv_java4")
+                Log.i(TAG, "OpenCV initialized via System.loadLibrary")
+                true
+            }
+        } catch (t: Throwable) {
+            Log.e(TAG, "OpenCV initialization failed", t)
+            false
+        }
+    }
+
+    /**
+     * Prevent repeated error spam if OpenCV isn't available on this build/device.
+     */
+    private fun ensureOpenCvReady(): Boolean {
+        if (openCvInitialized) {
+            return true
+        }
+
+        if (!openCvErrorReported) {
+            openCvErrorReported = true
+            val message = "OpenCV native library is unavailable. Rebuild and reinstall the app."
+            Log.e(TAG, message)
+            onError?.invoke(message)
+        }
+        return false
+    }
 
     /**
      * Start CameraX preview with frame analysis for edge detection.
@@ -96,7 +137,7 @@ class ScannerEngine(
                     }
 
                 // ImageAnalysis use case - for edge detection on each frame
-                if (enableFrameAnalysis) {
+                if (enableFrameAnalysis && ensureOpenCvReady()) {
                     imageAnalyzer = ImageAnalysis.Builder()
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                         .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
@@ -117,13 +158,15 @@ class ScannerEngine(
                                         onEdgeDetected?.invoke(cornerList, currentFrameWidth, currentFrameHeight)
                                         onFrameAnalyzed?.invoke(bitmap, cornerList, currentFrameWidth, currentFrameHeight)
                                     }
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "Frame analysis error", e)
+                                } catch (t: Throwable) {
+                                    Log.e(TAG, "Frame analysis error", t)
                                 } finally {
                                     imageProxy.close()
                                 }
                             }
                         }
+                } else if (enableFrameAnalysis) {
+                    Log.w(TAG, "Frame analysis disabled because OpenCV is not ready")
                 }
 
                 // ImageCapture use case - for high-res captures
@@ -247,19 +290,58 @@ class ScannerEngine(
     }
 
     /**
+     * Crop an existing image using perspective correction and save the result.
+     */
+    fun cropImage(imagePath: String, corners: List<Double>): String {
+        if (corners.size < 8) {
+            throw IllegalArgumentException("Invalid corners data")
+        }
+
+        val inputBitmap = BitmapFactory.decodeFile(imagePath)
+            ?: throw IllegalArgumentException("Cannot decode image: $imagePath")
+
+        val croppedBitmap = try {
+            perspectiveCorrect(inputBitmap, deflattenCorners(corners))
+        } finally {
+            inputBitmap.recycle()
+        }
+
+        val outputDir = context.filesDir
+        val outputFile = File(outputDir, "cropped_${System.currentTimeMillis()}.jpg")
+
+        try {
+            FileOutputStream(outputFile).use { outputStream ->
+                croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
+            }
+            return outputFile.absolutePath
+        } finally {
+            croppedBitmap.recycle()
+        }
+    }
+
+    /**
      * Detect document contour in a bitmap using OpenCV.
      * Returns 4 corner points if a document is found, null otherwise.
      */
     fun detectDocumentContour(bitmap: Bitmap): MatOfPoint2f? {
-        val mat = Mat()
-        Utils.bitmapToMat(bitmap, mat)
+        if (!ensureOpenCvReady()) {
+            return null
+        }
 
-        val gray = Mat()
-        val edges = Mat()
-        val hierarchy = Mat()
+        var mat: Mat? = null
+        var gray: Mat? = null
+        var edges: Mat? = null
+        var hierarchy: Mat? = null
         val contours = ArrayList<MatOfPoint>()
 
         try {
+            mat = Mat()
+            Utils.bitmapToMat(bitmap, mat)
+
+            gray = Mat()
+            edges = Mat()
+            hierarchy = Mat()
+
             // Convert to grayscale
             Imgproc.cvtColor(mat, gray, Imgproc.COLOR_RGBA2GRAY)
 
@@ -284,14 +366,14 @@ class ScannerEngine(
                 .firstNotNullOfOrNull { contour ->
                     approxQuad(contour)
                 }
-        } catch (e: Exception) {
-            Log.e(TAG, "Edge detection failed", e)
+        } catch (t: Throwable) {
+            Log.e(TAG, "Edge detection failed", t)
             return null
         } finally {
-            mat.release()
-            gray.release()
-            edges.release()
-            hierarchy.release()
+            mat?.release()
+            gray?.release()
+            edges?.release()
+            hierarchy?.release()
             contours.forEach { it.release() }
         }
     }

@@ -1,11 +1,13 @@
 // lib/features/camera/camera_page_native.dart
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image/image.dart' as img;
 import '../../core/constants.dart';
 import '../../core/utils.dart';
 import '../../core/router.dart';
@@ -14,6 +16,8 @@ import '../../shared/services/document_service.dart';
 import '../../shared/services/permission_service.dart';
 import '../../shared/services/scanner_bridge.dart';
 import 'widgets/native_camera_preview.dart';
+
+const double kCornerOverlaySmoothing = 0.22;
 
 /// Native camera page for Android using CameraX + OpenCV.
 ///
@@ -36,6 +40,7 @@ class CameraPageNative extends ConsumerStatefulWidget {
 class _CameraPageNativeState extends ConsumerState<CameraPageNative>
     with SingleTickerProviderStateMixin {
   List<double> _corners = [];
+  List<double> _displayCorners = [];
   int _frameWidth = 1920;
   int _frameHeight = 1080;
   bool _isCameraReady = false;
@@ -113,10 +118,14 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
     int frameWidth,
     int frameHeight,
   ) {
+    final liveCorners = List<double>.from(corners);
     setState(() {
-      _corners = corners;
+      _corners = liveCorners;
       _frameWidth = frameWidth;
       _frameHeight = frameHeight;
+      _displayCorners = _displayCorners.isEmpty
+          ? List<double>.from(liveCorners)
+          : _blendCorners(_displayCorners, liveCorners);
     });
 
     if (!_autoCaptureEnabled || _isProcessing || corners.length < 8) {
@@ -138,6 +147,17 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
       _resetStability();
     }
     _previousCorners = List.from(corners);
+  }
+
+  List<double> _blendCorners(List<double> current, List<double> target) {
+    if (current.length != target.length || current.length < 8) {
+      return List<double>.from(target);
+    }
+
+    return List<double>.generate(target.length, (index) {
+      return current[index] +
+          ((target[index] - current[index]) * kCornerOverlaySmoothing);
+    });
   }
 
   bool _cornersAreStable(List<double> corners) {
@@ -197,27 +217,35 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
     try {
       if (!auto) HapticFeedback.mediumImpact();
 
-      // Capture raw (pre-crop) frame from native
-      final rawPath = await ScannerBridge.captureDocument(_corners);
+      // Capture the page from native using the latest detected corners.
+      final capturedPath = await ScannerBridge.captureDocument(
+        List<double>.from(_corners),
+      );
       if (!mounted) return;
 
-      // Open the manual crop editor so the user can adjust corners
+      final capturedSize = await _getImageSize(capturedPath);
+      if (!mounted) return;
+
+      final initialCorners = _fullImageCorners(capturedSize);
+
+      // Open the crop editor so the user can refine the captured page.
       final adjustedCorners = await Navigator.of(context).push<List<double>>(
         MaterialPageRoute(
           fullscreenDialog: true,
           builder: (_) => ManualCropEditor(
-            imagePath: rawPath,
-            initialCorners: List<double>.from(_corners),
-            imageWidth: _frameWidth,
-            imageHeight: _frameHeight,
+            imagePath: capturedPath,
+            initialCorners: initialCorners,
+            imageWidth: capturedSize.width.round(),
+            imageHeight: capturedSize.height.round(),
           ),
         ),
       );
 
       if (!mounted) return;
 
-      // If the user cancelled the crop editor, discard this capture
+      // If the user cancelled the crop editor, discard this capture.
       if (adjustedCorners == null) {
+        await _deleteFileIfExists(capturedPath);
         setState(() {
           _isProcessing = false;
           _autoCaptureTriggered = false;
@@ -225,10 +253,19 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
         return;
       }
 
-      // If corners were adjusted, re-run perspective correction with new corners
-      final finalPath = adjustedCorners == _corners
-          ? rawPath
-          : await ScannerBridge.captureDocument(adjustedCorners);
+      var finalPath = capturedPath;
+      if (!listEquals(adjustedCorners, initialCorners)) {
+        final croppedPath = await ScannerBridge.cropImage(
+          capturedPath,
+          adjustedCorners,
+        );
+        if (croppedPath.isNotEmpty) {
+          finalPath = croppedPath;
+          if (croppedPath != capturedPath) {
+            await _deleteFileIfExists(capturedPath);
+          }
+        }
+      }
 
       setState(() {
         _capturedImages.add(finalPath);
@@ -297,6 +334,35 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
       if (mounted) {
         showSnackBar(context, 'Failed to save document: $e', isError: true);
       }
+    }
+  }
+
+  Future<Size> _getImageSize(String path) async {
+    final bytes = await File(path).readAsBytes();
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) {
+      throw Exception('Failed to decode captured image');
+    }
+    return Size(decoded.width.toDouble(), decoded.height.toDouble());
+  }
+
+  List<double> _fullImageCorners(Size size) {
+    return <double>[
+      0.0,
+      0.0,
+      size.width,
+      0.0,
+      size.width,
+      size.height,
+      0.0,
+      size.height,
+    ];
+  }
+
+  Future<void> _deleteFileIfExists(String path) async {
+    final file = File(path);
+    if (await file.exists()) {
+      await file.delete();
     }
   }
 
@@ -417,7 +483,7 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
                 animation: _countdownCtrl,
                 builder: (_, _) => CustomPaint(
                   painter: DocumentEdgeOverlayPainter(
-                    corners: _corners,
+                    corners: _displayCorners,
                     frameWidth: _frameWidth,
                     frameHeight: _frameHeight,
                     strokeWidth: 2.5,

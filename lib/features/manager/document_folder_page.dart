@@ -616,12 +616,12 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
     try {
       await ref.read(documentServiceProvider).backupOriginalImage(imagePath);
       final processedPath = await compute(
-        applyImageEdits,
+        applyImageEditsFromMap,
         ImageEditArgs(
           inputPath: imagePath,
           outputPath: tempPath,
           options: options,
-        ),
+        ).toMap(),
       );
 
       await File(processedPath).copy(imagePath);
@@ -1874,12 +1874,12 @@ class _FullScreenImageViewerState
     try {
       await ref.read(documentServiceProvider).backupOriginalImage(imagePath);
       final processedPath = await compute(
-        applyImageEdits,
+        applyImageEditsFromMap,
         ImageEditArgs(
           inputPath: imagePath,
           outputPath: tempPath,
           options: options,
-        ),
+        ).toMap(),
       );
 
       await File(processedPath).copy(imagePath);

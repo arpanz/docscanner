@@ -9,10 +9,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/services/scanner_bridge.dart';
 
 /// Number of consecutive stable frames required to trigger auto-capture.
-const int kAutoCaptureLockFrames = 18;
+const int kAutoCaptureLockFrames = 30;
 
 /// Pixel distance threshold within which corner points are considered "stable".
-const double kCornerStableThreshold = 12.0;
+const double kCornerStableThreshold = 10.0;
 
 /// Native Android camera preview using PlatformView.
 ///
