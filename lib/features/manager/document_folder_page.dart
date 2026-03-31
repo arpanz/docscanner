@@ -1099,7 +1099,8 @@ class _DocumentFolderPageState extends ConsumerState<DocumentFolderPage>
                     ),
                   ),
                 ),
-              )
+              ),
+            )
             : null,
         floatingActionButton: _reorderMode
             ? null
@@ -1485,7 +1486,7 @@ class _FullScreenImageViewerState
                         ),
                       ),
                     ),
-                  ),
+                    ),
                 ),
               ),
             ),
@@ -1568,9 +1569,7 @@ class _FullScreenImageViewerState
                                 icon: Icons.share,
                                 label: 'Share',
                                 color: cs.primary,
-                                onPressed: _isEditing
-                                    ? null
-                                    : _shareCurrentPage,
+                                onPressed: _isEditing ? null : _shareCurrentPage,
                               ),
                               if (_hasPdf) ...[
                                 const SizedBox(width: 10),
@@ -1592,13 +1591,8 @@ class _FullScreenImageViewerState
                               ),
                               const SizedBox(width: 10),
                               OutlinedButton.icon(
-                                onPressed: _isEditing
-                                    ? null
-                                    : _deleteCurrentPage,
-                                icon: Icon(
-                                  Icons.delete_outline,
-                                  color: cs.error,
-                                ),
+                                onPressed: _isEditing ? null : _deleteCurrentPage,
+                                icon: Icon(Icons.delete_outline, color: cs.error),
                                 label: Text(
                                   'Delete',
                                   style: TextStyle(color: cs.error),

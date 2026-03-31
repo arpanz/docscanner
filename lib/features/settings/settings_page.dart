@@ -113,10 +113,7 @@ class SettingsPage extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(
-          'Select Theme',
-          style: const TextStyle(fontWeight: FontWeight.w800),
-        ),
+        title: Text('Select Theme', style: const TextStyle(fontWeight: FontWeight.w800)),
         content: RadioGroup<ThemeMode>(
           groupValue: current,
           onChanged: (value) {
@@ -128,28 +125,16 @@ class SettingsPage extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               RadioListTile<ThemeMode>(
-                title: Text(
-                  'System default',
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-                subtitle: Text(
-                  'Follow device theme',
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
+                title: Text('System default', style: const TextStyle(fontWeight: FontWeight.w800)),
+                subtitle: Text('Follow device theme', style: const TextStyle(fontWeight: FontWeight.w800)),
                 value: ThemeMode.system,
               ),
               RadioListTile<ThemeMode>(
-                title: Text(
-                  'Light',
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
+                title: Text('Light', style: const TextStyle(fontWeight: FontWeight.w800)),
                 value: ThemeMode.light,
               ),
               RadioListTile<ThemeMode>(
-                title: Text(
-                  'Dark',
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
+                title: Text('Dark', style: const TextStyle(fontWeight: FontWeight.w800)),
                 value: ThemeMode.dark,
               ),
             ],
@@ -173,10 +158,7 @@ class SettingsPage extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(
-          'PDF page size',
-          style: const TextStyle(fontWeight: FontWeight.w800),
-        ),
+        title: Text('PDF page size', style: const TextStyle(fontWeight: FontWeight.w800)),
         content: RadioGroup<PdfPageSizeOption>(
           groupValue: current,
           onChanged: (value) {

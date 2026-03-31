@@ -127,7 +127,7 @@ String applyImageEditsFromMap(Map<String, Object?> rawArgs) {
     image = img.adjustColor(image, brightness: brightness, contrast: contrast);
   }
 
-  final turns = rotationTurns % 4;
+  final turns = args.options.rotationTurns % 4;
   if (turns == 1) {
     image = img.copyRotate(image, angle: 90);
   } else if (turns == 2) {
@@ -163,8 +163,8 @@ class _ThumbArgs {
 }
 
 /// Decode & downscale the image to a small thumbnail in an isolate.
-Future<img.Image?> _decodeThumbnail(_ThumbArgs args) async {
-  final bytes = await File(args.imagePath).readAsBytes();
+img.Image? _decodeThumbnail(_ThumbArgs args) {
+  final bytes = File(args.imagePath).readAsBytesSync();
   final full = img.decodeImage(bytes);
   if (full == null) return null;
   return img.copyResize(full, width: args.targetWidth);
@@ -279,8 +279,8 @@ class _FilterThumbnailStripState extends State<FilterThumbnailStrip> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
+    final cs = theme.colorScheme;
 
     return SizedBox(
       height: 108,

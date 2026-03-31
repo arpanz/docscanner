@@ -119,15 +119,19 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
     int frameWidth,
     int frameHeight,
   ) {
-    final liveCorners = List<double>.from(corners);
-    setState(() {
-      _corners = liveCorners;
-      _frameWidth = frameWidth;
-      _frameHeight = frameHeight;
-      _displayCorners = _displayCorners.isEmpty
-          ? List<double>.from(liveCorners)
-          : _blendCorners(_displayCorners, liveCorners);
-    });
+    if (!mounted) return;
+
+    final cornersChanged =
+        !listEquals(corners, _corners) ||
+        frameWidth != _frameWidth ||
+        frameHeight != _frameHeight;
+    if (cornersChanged) {
+      setState(() {
+        _corners = corners;
+        _frameWidth = frameWidth;
+        _frameHeight = frameHeight;
+      });
+    }
 
     if (!_autoCaptureEnabled || _isProcessing || corners.length < 8) {
       _resetStability();
@@ -254,19 +258,11 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
         return;
       }
 
-      var finalPath = capturedPath;
-      if (!listEquals(adjustedCorners, initialCorners)) {
-        final croppedPath = await ScannerBridge.cropImage(
-          capturedPath,
-          adjustedCorners,
-        );
-        if (croppedPath.isNotEmpty) {
-          finalPath = croppedPath;
-          if (croppedPath != capturedPath) {
-            await _deleteFileIfExists(capturedPath);
-          }
-        }
-      }
+      // If corners were adjusted, re-run perspective correction with new corners
+      final cornersUnchanged = listEquals(adjustedCorners, _corners);
+      final finalPath = cornersUnchanged
+          ? rawPath
+          : await ScannerBridge.captureDocument(adjustedCorners);
 
       setState(() {
         _capturedImages.add(finalPath);
@@ -482,7 +478,7 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
             Positioned.fill(
               child: AnimatedBuilder(
                 animation: _countdownCtrl,
-                builder: (_, _) => CustomPaint(
+                builder: (context, child) => CustomPaint(
                   painter: DocumentEdgeOverlayPainter(
                     corners: _displayCorners,
                     frameWidth: _frameWidth,

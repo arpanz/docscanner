@@ -288,38 +288,6 @@ class _ManualCropEditorState extends State<ManualCropEditor>
       begin: 0.85,
       end: 1.15,
     ).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
-    
-    // Schedule display geometry initialization after first frame
-    WidgetsBinding.instance.addPostFrameCallback((_) => _initDisplayGeometry());
-  }
-  
-  void _initDisplayGeometry() {
-    if (!mounted) return;
-    _updateDisplayGeometry();
-    setState(() => _displayGeometryReady = true);
-  }
-
-  /// Calculate the rendered image size when using BoxFit.contain
-  Size _calculateContainSize(
-    double imageWidth,
-    double imageHeight,
-    double maxWidth,
-    double maxHeight,
-  ) {
-    final imageAspect = imageWidth / imageHeight;
-    final containerAspect = maxWidth / maxHeight;
-    
-    if (imageAspect > containerAspect) {
-      // Image is wider than container - fit to width
-      final width = maxWidth;
-      final height = width / imageAspect;
-      return Size(width, height);
-    } else {
-      // Image is taller than container - fit to height
-      final height = maxHeight;
-      final width = height * imageAspect;
-      return Size(width, height);
-    }
   }
 
   @override
@@ -330,9 +298,7 @@ class _ManualCropEditorState extends State<ManualCropEditor>
 
   /// Convert image coords → screen coords within the display box.
   Offset _toScreen(double ix, double iy) {
-    if (!_displayGeometryReady || widget.imageWidth == 0 || widget.imageHeight == 0) {
-      return Offset.zero;
-    }
+    if (widget.imageWidth == 0 || widget.imageHeight == 0) return Offset.zero;
     final sx =
         (ix / widget.imageWidth) * _displaySize.width + _displayOffset.dx;
     final sy =
@@ -342,9 +308,7 @@ class _ManualCropEditorState extends State<ManualCropEditor>
 
   /// Convert screen coords → image coords.
   Offset _toImage(Offset screen) {
-    if (!_displayGeometryReady || _displaySize == Size.zero) {
-      return Offset.zero;
-    }
+    if (_displaySize == Size.zero) return Offset.zero;
     final ix =
         ((screen.dx - _displayOffset.dx) / _displaySize.width) *
         widget.imageWidth;
@@ -480,28 +444,45 @@ class _ManualCropEditorState extends State<ManualCropEditor>
 
           // Quad + handles overlay - full screen but gestures work through
           Positioned.fill(
-            child: CustomPaint(
-              painter: _ManualCropPainter(
-                corners: _corners,
-                imageWidth: widget.imageWidth,
-                imageHeight: widget.imageHeight,
-                displaySize: _displaySize,
-                displayOffset: _displayOffset,
-                activeIndex: _draggingIndex,
-                color: const Color(0xFF5C4BF5),
-                pulseScale: _draggingIndex == -1 ? _pulseAnim.value : 1.0,
+            child: GestureDetector(
+              onPanStart: _onPanStart,
+              onPanUpdate: _onPanUpdate,
+              onPanEnd: _onPanEnd,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  WidgetsBinding.instance.addPostFrameCallback(
+                    (_) => _updateDisplayGeometry(),
+                  );
+                  return Image.file(
+                    key: _imageKey,
+                    File(widget.imagePath),
+                    fit: BoxFit.contain,
+                    width: constraints.maxWidth,
+                    height: constraints.maxHeight,
+                  );
+                },
               ),
             ),
           ),
 
           // Invisible gesture detector over the entire area for dragging
           Positioned.fill(
-            child: GestureDetector(
-              onPanStart: _onPanStart,
-              onPanUpdate: _onPanUpdate,
-              onPanEnd: _onPanEnd,
-              behavior: HitTestBehavior.translucent,
-              child: Container(color: Colors.transparent),
+            child: IgnorePointer(
+              child: CustomPaint(
+                painter: _ManualCropPainter(
+                  corners: _corners,
+                  imageWidth: widget.imageWidth,
+                  imageHeight: widget.imageHeight,
+                  displaySize: _displaySize,
+                  activeIndex: _draggingIndex,
+                  color: const Color(0xFF5C4BF5),
+                  pulseScale: _draggingIndex == -1 ? _pulseAnim.value : 1.0,
+                ),
+                child: AnimatedBuilder(
+                  animation: _pulseAnim,
+                  builder: (context, child) => const SizedBox.expand(),
+                ),
+              ),
             ),
           ),
         ],
@@ -532,7 +513,6 @@ class _ManualCropPainter extends CustomPainter {
     required this.imageWidth,
     required this.imageHeight,
     required this.displaySize,
-    required this.displayOffset,
     required this.activeIndex,
     required this.color,
     required this.pulseScale,
@@ -542,22 +522,17 @@ class _ManualCropPainter extends CustomPainter {
   final int imageWidth;
   final int imageHeight;
   final Size displaySize;
-  final Offset displayOffset;
   final int activeIndex;
   final Color color;
   final double pulseScale;
 
-  Offset _toScreen(double ix, double iy, Size canvasSize) {
-    // Use the displaySize/displayOffset passed from the widget state
-    // These are the actual rendered image dimensions
+  Offset _toScreen(double ix, double iy) {
     if (imageWidth == 0 || imageHeight == 0 || displaySize == Size.zero) {
       return Offset.zero;
     }
-    // Scale from image coordinates to display coordinates
     final sx = (ix / imageWidth) * displaySize.width;
     final sy = (iy / imageHeight) * displaySize.height;
-    // Add offset to position within the canvas
-    return Offset(sx + displayOffset.dx, sy + displayOffset.dy);
+    return Offset(sx, sy);
   }
 
   @override
@@ -566,7 +541,7 @@ class _ManualCropPainter extends CustomPainter {
 
     final points = <Offset>[];
     for (var i = 0; i < 4; i++) {
-      points.add(_toScreen(corners[i * 2], corners[i * 2 + 1], size));
+      points.add(_toScreen(corners[i * 2], corners[i * 2 + 1]));
     }
 
     // Dim area outside crop
