@@ -17,6 +17,27 @@ const double kCornerStableThreshold = 18.0;
 /// Minimum confidence required before auto-capture trusts a detection.
 const double kMinimumLiveDetectionConfidence = 0.52;
 
+Offset _mapCoverPointToCanvas({
+  required double dx,
+  required double dy,
+  required double sourceWidth,
+  required double sourceHeight,
+  required Size canvasSize,
+}) {
+  if (sourceWidth <= 0 || sourceHeight <= 0 || canvasSize.isEmpty) {
+    return Offset.zero;
+  }
+  final scale = [
+    canvasSize.width / sourceWidth,
+    canvasSize.height / sourceHeight,
+  ].reduce((a, b) => a > b ? a : b);
+  final fittedWidth = sourceWidth * scale;
+  final fittedHeight = sourceHeight * scale;
+  final offsetX = (canvasSize.width - fittedWidth) / 2;
+  final offsetY = (canvasSize.height - fittedHeight) / 2;
+  return Offset(dx * scale + offsetX, dy * scale + offsetY);
+}
+
 /// Native Android camera preview using PlatformView.
 ///
 /// Streams edge detection results to Flutter and tracks corner stability
@@ -139,9 +160,15 @@ class DocumentEdgeOverlayPainter extends CustomPainter {
     // Scale corners from image coords → screen coords
     final points = <Offset>[];
     for (var i = 0; i < corners.length; i += 2) {
-      final x = (corners[i] / frameWidth) * size.width;
-      final y = (corners[i + 1] / frameHeight) * size.height;
-      points.add(Offset(x, y));
+      points.add(
+        _mapCoverPointToCanvas(
+          dx: corners[i],
+          dy: corners[i + 1],
+          sourceWidth: frameWidth.toDouble(),
+          sourceHeight: frameHeight.toDouble(),
+          canvasSize: size,
+        ),
+      );
     }
     if (points.length < 4) return;
 

@@ -89,6 +89,11 @@ class ScannerEngine(
         val confidence: Double
     )
 
+    private data class CandidateShape(
+        val quad: Array<Point>,
+        val contourArea: Double
+    )
+
     private fun initializeOpenCv(): Boolean {
         return try {
             if (OpenCVLoader.initDebug()) {
@@ -361,10 +366,10 @@ class ScannerEngine(
         val upperThreshold = lowerThreshold * 2.4
         Imgproc.Canny(blurred, edges, lowerThreshold, upperThreshold)
 
-        val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0))
+        // Keep gaps closed without inflating the detected page boundary.
+        val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0))
         val closed = Mat()
         Imgproc.morphologyEx(edges, closed, Imgproc.MORPH_CLOSE, kernel)
-        Imgproc.dilate(closed, closed, kernel)
         kernel.release()
         edges.release()
         return closed
@@ -382,7 +387,7 @@ class ScannerEngine(
             7.0
         )
         Core.bitwise_not(adaptive, adaptive)
-        val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0))
+        val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0))
         Imgproc.morphologyEx(adaptive, adaptive, Imgproc.MORPH_CLOSE, kernel)
         kernel.release()
         return adaptive
@@ -402,12 +407,15 @@ class ScannerEngine(
                 mask,
                 contours,
                 hierarchy,
-                Imgproc.RETR_LIST,
+                Imgproc.RETR_EXTERNAL,
                 Imgproc.CHAIN_APPROX_SIMPLE
             )
-            return contours.mapNotNull { contour ->
+            return contours
+                .sortedByDescending { kotlin.math.abs(Imgproc.contourArea(it)) }
+                .take(12)
+                .mapNotNull { contour ->
                 buildCandidateFromContour(contour, minArea, frameWidth, frameHeight, frameArea)
-            }
+                }
         } finally {
             hierarchy.release()
             contours.forEach { it.release() }
@@ -432,20 +440,46 @@ class ScannerEngine(
         frameHeight: Int,
         frameArea: Double
     ): DetectedDocument? {
-        val area = kotlin.math.abs(Imgproc.contourArea(contour))
-        if (area < minArea) return null
-
-        val quad =
-            approxQuad(contour) ?: minAreaRectQuad(contour, area)
-            ?: return null
-        if (!isValidQuadrilateral(quad, frameWidth, frameHeight, frameArea)) {
+        val candidate = buildCandidateShape(contour, minArea) ?: return null
+        if (!isValidQuadrilateral(candidate.quad, frameWidth, frameHeight, frameArea)) {
             return null
         }
 
         return DetectedDocument(
-            corners = flattenCornerPoints(quad),
-            confidence = scoreQuad(quad, frameWidth, frameHeight, frameArea)
+            corners = flattenCornerPoints(candidate.quad),
+            confidence = scoreQuad(
+                candidate.quad,
+                candidate.contourArea,
+                frameWidth,
+                frameHeight,
+                frameArea
+            )
         )
+    }
+
+    private fun buildCandidateShape(contour: MatOfPoint, minArea: Double): CandidateShape? {
+        val contourArea = kotlin.math.abs(Imgproc.contourArea(contour))
+        if (contourArea < minArea) return null
+
+        val hull = convexHullContour(contour)
+        try {
+            val hullArea = kotlin.math.abs(Imgproc.contourArea(hull))
+            if (hullArea < minArea) return null
+
+            val quad =
+                approxQuad(hull) ?: minAreaRectQuad(hull, hullArea)
+                ?: return null
+
+            val quadArea = polygonArea(quad)
+            if (quadArea <= 0.0) return null
+
+            val fillRatio = (hullArea / quadArea).coerceIn(0.0, 1.4)
+            if (fillRatio < 0.72) return null
+
+            return CandidateShape(quad = quad, contourArea = hullArea)
+        } finally {
+            hull.release()
+        }
     }
 
     private fun approxQuad(contour: MatOfPoint): Array<Point>? {
@@ -486,14 +520,28 @@ class ScannerEngine(
         }
     }
 
+    private fun convexHullContour(contour: MatOfPoint): MatOfPoint {
+        val hullIndices = MatOfInt()
+        try {
+            Imgproc.convexHull(contour, hullIndices)
+            val contourPoints = contour.toArray()
+            val hullPoints = hullIndices.toArray().map { contourPoints[it] }.toTypedArray()
+            return MatOfPoint(*hullPoints)
+        } finally {
+            hullIndices.release()
+        }
+    }
+
     private fun scoreQuad(
         points: Array<Point>,
+        contourArea: Double,
         frameWidth: Int,
         frameHeight: Int,
         frameArea: Double
     ): Double {
-        val areaRatio = polygonArea(points) / frameArea
-        val sizeScore = (1.0 - kotlin.math.abs(areaRatio - 0.42) / 0.42).coerceIn(0.0, 1.0)
+        val quadArea = polygonArea(points)
+        val areaRatio = quadArea / frameArea
+        val sizeScore = (1.0 - kotlin.math.abs(areaRatio - 0.46) / 0.46).coerceIn(0.0, 1.0)
         val center = Point(
             points.map { it.x }.average(),
             points.map { it.y }.average()
@@ -515,13 +563,17 @@ class ScannerEngine(
         }
         val angleScore = averageAngleScore(points)
         val continuityScore = continuityScore(points, frameWidth, frameHeight)
+        val fillScore = (contourArea / quadArea).coerceIn(0.0, 1.0)
+        val borderScore = borderClearanceScore(points, frameWidth, frameHeight)
 
         return (
-            (sizeScore * 0.30) +
-                (centerScore * 0.16) +
+            (sizeScore * 0.25) +
+                (centerScore * 0.14) +
                 (aspectScore * 0.10) +
                 (angleScore * 0.18) +
-                (continuityScore * 0.26)
+                (fillScore * 0.18) +
+                (borderScore * 0.08) +
+                (continuityScore * 0.07)
             ).coerceIn(0.0, 1.0)
     }
 
@@ -544,6 +596,19 @@ class ScannerEngine(
             val angle = interiorAngle(prev, current, next)
             (1.0 - (kotlin.math.abs(angle - 90.0) / 65.0)).coerceIn(0.0, 1.0)
         }.average()
+    }
+
+    private fun borderClearanceScore(points: Array<Point>, frameWidth: Int, frameHeight: Int): Double {
+        val minDistanceToBorder = points.minOf { point ->
+            minOf(
+                point.x,
+                point.y,
+                frameWidth - point.x,
+                frameHeight - point.y
+            )
+        }
+        val target = minOf(frameWidth, frameHeight) * 0.04
+        return (minDistanceToBorder / target).coerceIn(0.0, 1.0)
     }
 
     private fun interiorAngle(prev: Point, current: Point, next: Point): Double {
@@ -588,8 +653,17 @@ class ScannerEngine(
         val aspectRatio = avgWidth / avgHeight
         if (aspectRatio > 4.2 || aspectRatio < 0.22) return false
 
+        val fillRatio = contourFillRatio(points)
+        if (fillRatio < 0.55) return false
         if (averageAngleScore(points) < 0.34) return false
         return true
+    }
+
+    private fun contourFillRatio(points: Array<Point>): Double {
+        val rect = Imgproc.boundingRect(MatOfPoint(*points))
+        val rectArea = rect.width * rect.height.toDouble()
+        if (rectArea <= 0.0) return 0.0
+        return (polygonArea(points) / rectArea).coerceIn(0.0, 1.0)
     }
 
     private fun orderPoints(points: Array<Point>): Array<Point> {

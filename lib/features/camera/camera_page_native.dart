@@ -57,20 +57,19 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
   @override
   void initState() {
     super.initState();
-    _countdownCtrl = AnimationController(
-      vsync: this,
-      duration: kAutoCaptureHoldDuration,
-    )..addStatusListener((status) {
-        if (status != AnimationStatus.completed ||
-            !_autoCaptureEnabled ||
-            _autoCaptureTriggered ||
-            _isProcessing ||
-            !_hasLiveDetection) {
-          return;
-        }
-        _autoCaptureTriggered = true;
-        unawaited(_capture(auto: true));
-      });
+    _countdownCtrl =
+        AnimationController(vsync: this, duration: kAutoCaptureHoldDuration)
+          ..addStatusListener((status) {
+            if (status != AnimationStatus.completed ||
+                !_autoCaptureEnabled ||
+                _autoCaptureTriggered ||
+                _isProcessing ||
+                !_hasLiveDetection) {
+              return;
+            }
+            _autoCaptureTriggered = true;
+            unawaited(_capture(auto: true));
+          });
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _requestPermissionsAndStartCamera(),
     );
@@ -225,7 +224,6 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
     _resetStability();
 
     try {
-
       // Step 1 — capture raw uncropped frame
       final rawPath = await ScannerBridge.captureRaw();
       if (!mounted) return;
@@ -242,7 +240,10 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
 
       // Step 3 — scale corners from analysis-frame coordinates to actual-image coordinates
       // Analysis frame is typically 1280×720 (rotated), actual image may be 4032×3024
-      final initialCorners = _buildInitialCropCorners(actualWidth, actualHeight);
+      final initialCorners = _buildInitialCropCorners(
+        actualWidth,
+        actualHeight,
+      );
 
       // Step 4 — open crop editor with actual image dimensions and scaled corners
       final adjustedCorners = await Navigator.of(context).push<List<double>>(
@@ -328,16 +329,18 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
         _corners.length >= 8 &&
         _frameWidth > 0 &&
         _frameHeight > 0) {
-      final scaleX = actualWidth.toDouble() / _frameWidth.toDouble();
-      final scaleY = actualHeight.toDouble() / _frameHeight.toDouble();
       final scaledCorners = <double>[];
       for (var i = 0; i < _corners.length; i += 2) {
-        scaledCorners.add(
-          (_corners[i] * scaleX).clamp(0, actualWidth).toDouble(),
+        final mapped = _mapCoverPointFromAnalysisToImage(
+          dx: _corners[i],
+          dy: _corners[i + 1],
+          analysisWidth: _frameWidth.toDouble(),
+          analysisHeight: _frameHeight.toDouble(),
+          imageWidth: actualWidth.toDouble(),
+          imageHeight: actualHeight.toDouble(),
         );
-        scaledCorners.add(
-          (_corners[i + 1] * scaleY).clamp(0, actualHeight).toDouble(),
-        );
+        scaledCorners.add(mapped.dx);
+        scaledCorners.add(mapped.dy);
       }
       if (_looksUsableQuad(scaledCorners, actualWidth, actualHeight)) {
         return scaledCorners;
@@ -367,6 +370,28 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
     final minY = ys.reduce((a, b) => a < b ? a : b);
     final maxY = ys.reduce((a, b) => a > b ? a : b);
     return (maxX - minX) >= width * 0.2 && (maxY - minY) >= height * 0.2;
+  }
+
+  Offset _mapCoverPointFromAnalysisToImage({
+    required double dx,
+    required double dy,
+    required double analysisWidth,
+    required double analysisHeight,
+    required double imageWidth,
+    required double imageHeight,
+  }) {
+    final scale = [
+      analysisWidth / imageWidth,
+      analysisHeight / imageHeight,
+    ].reduce((a, b) => a > b ? a : b);
+    final fittedWidth = imageWidth * scale;
+    final fittedHeight = imageHeight * scale;
+    final offsetX = (analysisWidth - fittedWidth) / 2;
+    final offsetY = (analysisHeight - fittedHeight) / 2;
+    return Offset(
+      ((dx - offsetX) / scale).clamp(0.0, imageWidth),
+      ((dy - offsetY) / scale).clamp(0.0, imageHeight),
+    );
   }
 
   Future<String> _applyEnhancementReview(
@@ -565,8 +590,9 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
                     strokeWidth: 2.5,
                     color: _getOverlayColor(),
                     fillColor: _getOverlayColor().withValues(alpha: 0.10),
-                    captureProgress:
-                        _autoCaptureEnabled ? _countdownCtrl.value : 0,
+                    captureProgress: _autoCaptureEnabled
+                        ? _countdownCtrl.value
+                        : 0,
                   ),
                 ),
               ),
@@ -596,8 +622,8 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
                     child: Text(
                       _hasLiveDetection
                           ? (_autoCaptureEnabled
-                              ? 'Hold still...'
-                              : 'Document detected')
+                                ? 'Hold still...'
+                                : 'Document detected')
                           : 'Align with a document',
                       style: const TextStyle(
                         color: Colors.white,
@@ -689,14 +715,17 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
+                      Icon(
+                        Icons.error_outline,
+                        size: 64,
+                        color: Colors.red[300],
+                      ),
                       const SizedBox(height: 16),
                       Text(
                         'Camera Error',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleLarge
-                            ?.copyWith(color: Colors.white),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.titleLarge?.copyWith(color: Colors.white),
                       ),
                       const SizedBox(height: 8),
                       Padding(
@@ -704,9 +733,7 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
                         child: Text(
                           _error!,
                           textAlign: TextAlign.center,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
+                          style: Theme.of(context).textTheme.bodyMedium
                               ?.copyWith(color: Colors.white70),
                         ),
                       ),
