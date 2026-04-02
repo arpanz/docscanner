@@ -204,6 +204,63 @@ class DocumentService {
     }
   }
 
+  /// Repairs the lightweight DB index from on-disk document folders.
+  ///
+  /// This keeps saved documents discoverable even if the metadata DB was
+  /// cleared, partially migrated, or fell out of sync with the file system.
+  Future<int> repairDocumentLibrary() async {
+    final docsDir = await _documentsDir();
+    final docs = await _docsDao.getAllDocuments();
+
+    final indexedFolders = {
+      for (final doc in docs) p.normalize(cleanFilePath(doc.folderPath)): doc,
+    };
+
+    for (final doc in docs) {
+      await _docsDao.refreshDocumentMeta(doc.id, doc.folderPath);
+    }
+
+    var repairedCount = 0;
+    final folders = await docsDir
+        .list()
+        .where((entity) => entity is Directory)
+        .cast<Directory>()
+        .toList();
+
+    for (final folder in folders) {
+      final normalizedPath = p.normalize(folder.path);
+      if (indexedFolders.containsKey(normalizedPath)) {
+        continue;
+      }
+
+      final files = await folder
+          .list()
+          .where((entity) => entity is File)
+          .cast<File>()
+          .toList();
+      if (files.isEmpty) continue;
+
+      final pdfs = files
+          .where((file) => file.path.toLowerCase().endsWith('.pdf'))
+          .toList()
+        ..sort((a, b) => a.path.compareTo(b.path));
+
+      final docId = await _docsDao.insertDocument(
+        DocumentsCompanion(
+          title: Value(_restoreTitleFromFolder(folder.path)),
+          folderPath: Value(folder.path),
+          pdfPath: pdfs.isNotEmpty
+              ? Value(pdfs.first.path)
+              : const Value.absent(),
+        ),
+      );
+      await _docsDao.refreshDocumentMeta(docId, folder.path);
+      repairedCount++;
+    }
+
+    return repairedCount;
+  }
+
   /// Returns user-page images only — excludes the cover file (~cover.png)
   /// and any other internal files.
   Future<List<String>> getDocumentImages(
@@ -386,6 +443,13 @@ class DocumentService {
       .replaceAll(RegExp(r'[^\w\s-]'), '')
       .trim()
       .replaceAll(' ', '_');
+
+  String _restoreTitleFromFolder(String folderPath) {
+    final baseName = p.basename(folderPath);
+    final withoutSuffix = baseName.replaceFirst(RegExp(r'_[0-9a-fA-F]{8}$'), '');
+    final withSpaces = withoutSuffix.replaceAll('_', ' ').trim();
+    return withSpaces.isEmpty ? 'Recovered Scan' : withSpaces;
+  }
 
   Future<void> backupOriginalImage(String imagePath) async {
     final file = File(imagePath);

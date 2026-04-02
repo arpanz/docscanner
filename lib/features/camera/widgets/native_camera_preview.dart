@@ -8,13 +8,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/services/scanner_bridge.dart';
 
-/// Number of consecutive stable frames required to trigger auto-capture.
-/// Increased from 30 to 45 for more reliable auto-capture.
-const int kAutoCaptureLockFrames = 45;
+/// Time the document must remain stable before auto-capture fires.
+const Duration kAutoCaptureHoldDuration = Duration(milliseconds: 850);
 
 /// Pixel distance threshold within which corner points are considered "stable".
-/// Increased from 10.0 to 12.0 for better tolerance of minor detection jitter.
-const double kCornerStableThreshold = 12.0;
+const double kCornerStableThreshold = 18.0;
+
+/// Minimum confidence required before auto-capture trusts a detection.
+const double kMinimumLiveDetectionConfidence = 0.52;
 
 /// Native Android camera preview using PlatformView.
 ///
@@ -23,12 +24,12 @@ const double kCornerStableThreshold = 12.0;
 class NativeCameraPreview extends ConsumerStatefulWidget {
   const NativeCameraPreview({
     super.key,
-    required this.onCornerDetected,
+    required this.onDetectionChanged,
     this.onCameraReady,
     this.onError,
   });
 
-  final Function(List<double>, int, int) onCornerDetected;
+  final ValueChanged<EdgeDetectionData> onDetectionChanged;
   final VoidCallback? onCameraReady;
   final Function(String)? onError;
 
@@ -53,14 +54,12 @@ class _NativeCameraPreviewState extends ConsumerState<NativeCameraPreview> {
 
     _edgeSubscription = ScannerBridge.edgeStream.listen(
       (data) {
-        widget.onCornerDetected(
-          data.corners,
-          data.frameWidth,
-          data.frameHeight,
-        );
+        widget.onDetectionChanged(data);
       },
       onError: (error) {
-        final platformError = error as PlatformException;
+        final platformError = error is PlatformException
+            ? error
+            : PlatformException(code: 'scanner_error', message: '$error');
         final message = platformError.message ?? 'Unknown error';
         widget.onError?.call(message);
       },
@@ -113,7 +112,7 @@ class _NativeCameraPreviewState extends ConsumerState<NativeCameraPreview> {
 
 /// Draws a quadrilateral overlay and optionally an auto-capture countdown ring.
 ///
-/// [stableFrameCount] / [autoCaptureTotalFrames] drive the arc progress.
+/// [captureProgress] drives the auto-capture countdown ring.
 class DocumentEdgeOverlayPainter extends CustomPainter {
   DocumentEdgeOverlayPainter({
     required this.corners,
@@ -122,8 +121,7 @@ class DocumentEdgeOverlayPainter extends CustomPainter {
     this.strokeWidth = 3.0,
     this.color = const Color(0xFF5C4BF5),
     this.fillColor = const Color(0x205C4BF5),
-    this.stableFrameCount = 0,
-    this.autoCaptureTotalFrames = kAutoCaptureLockFrames,
+    this.captureProgress = 0,
   });
 
   final List<double> corners;
@@ -132,8 +130,7 @@ class DocumentEdgeOverlayPainter extends CustomPainter {
   final double strokeWidth;
   final Color color;
   final Color fillColor;
-  final int stableFrameCount;
-  final int autoCaptureTotalFrames;
+  final double captureProgress;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -185,8 +182,8 @@ class DocumentEdgeOverlayPainter extends CustomPainter {
     }
 
     // Auto-capture countdown ring (drawn at centroid)
-    if (stableFrameCount > 0 && autoCaptureTotalFrames > 0) {
-      final progress = stableFrameCount / autoCaptureTotalFrames;
+    final progress = captureProgress.clamp(0.0, 1.0);
+    if (progress > 0) {
       final cx = points.map((p) => p.dx).reduce((a, b) => a + b) / 4;
       final cy = points.map((p) => p.dy).reduce((a, b) => a + b) / 4;
 
@@ -221,7 +218,7 @@ class DocumentEdgeOverlayPainter extends CustomPainter {
     return oldDelegate.corners != corners ||
         oldDelegate.frameWidth != frameWidth ||
         oldDelegate.frameHeight != frameHeight ||
-        oldDelegate.stableFrameCount != stableFrameCount;
+        oldDelegate.captureProgress != captureProgress;
   }
 }
 
@@ -267,13 +264,16 @@ class _ManualCropEditorState extends State<ManualCropEditor>
   // Index of the corner currently being dragged (-1 = none).
   int _draggingIndex = -1;
 
-  // Render box of the image as displayed on screen.
-  final GlobalKey _imageKey = GlobalKey();
+  // Display geometry — relates image pixel coords to screen coords.
+  // Computed from the LayoutBuilder's constraints + contain fitting.
   Size _displaySize = Size.zero;
+  // Global offset of the fitted image — used for gesture coordinate conversion
   Offset _displayOffset = Offset.zero;
-  
-  // Track if display geometry has been initialized
-  bool _displayGeometryReady = false;
+  // Local offset of the fitted image within the body Stack — used for painter
+  Offset _displayOffsetLocal = Offset.zero;
+
+  // The global offset of the LayoutBuilder container (body area below AppBar)
+  final GlobalKey _bodyKey = GlobalKey();
 
   @override
   void initState() {
@@ -296,7 +296,7 @@ class _ManualCropEditorState extends State<ManualCropEditor>
     super.dispose();
   }
 
-  /// Convert image coords → screen coords within the display box.
+  /// Convert image coords → global screen coords (for gesture handling).
   Offset _toScreen(double ix, double iy) {
     if (widget.imageWidth == 0 || widget.imageHeight == 0) return Offset.zero;
     final sx =
@@ -306,7 +306,7 @@ class _ManualCropEditorState extends State<ManualCropEditor>
     return Offset(sx, sy);
   }
 
-  /// Convert screen coords → image coords.
+  /// Convert global screen coords → image coords.
   Offset _toImage(Offset screen) {
     if (_displaySize == Size.zero) return Offset.zero;
     final ix =
@@ -332,11 +332,31 @@ class _ManualCropEditorState extends State<ManualCropEditor>
     }
   }
 
-  void _updateDisplayGeometry() {
-    final box = _imageKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    _displaySize = box.size;
-    _displayOffset = box.localToGlobal(Offset.zero);
+  /// Recompute display geometry from the body area's global position.
+  void _recomputeDisplayGeometry(BoxConstraints constraints) {
+    final imageSize = _calculateContainSize(
+      widget.imageWidth.toDouble(),
+      widget.imageHeight.toDouble(),
+      constraints.maxWidth,
+      constraints.maxHeight,
+    );
+
+    // Get the global offset of the body area (below AppBar)
+    final bodyBox = _bodyKey.currentContext?.findRenderObject() as RenderBox?;
+    final bodyGlobalOffset = bodyBox?.localToGlobal(Offset.zero) ?? Offset.zero;
+
+    // The image is centered within the constraints
+    final localOffsetX = (constraints.maxWidth - imageSize.width) / 2;
+    final localOffsetY = (constraints.maxHeight - imageSize.height) / 2;
+
+    _displaySize = imageSize;
+    // Local offset within the body Stack — used by the painter (canvas starts at body top-left)
+    _displayOffsetLocal = Offset(localOffsetX, localOffsetY);
+    // Global offset — used for gesture coordinate conversion
+    _displayOffset = Offset(
+      bodyGlobalOffset.dx + localOffsetX,
+      bodyGlobalOffset.dy + localOffsetY,
+    );
   }
 
   /// Find the corner index closest to [screenPos] within [hitRadius].
@@ -357,11 +377,6 @@ class _ManualCropEditorState extends State<ManualCropEditor>
   }
 
   void _onPanStart(DragStartDetails details) {
-    // Always update display geometry on pan start to ensure accuracy
-    _updateDisplayGeometry();
-    if (!_displayGeometryReady) {
-      _displayGeometryReady = true;
-    }
     final idx = _findClosestCorner(details.globalPosition);
     if (idx != -1) {
       setState(() => _draggingIndex = idx);
@@ -414,36 +429,21 @@ class _ManualCropEditorState extends State<ManualCropEditor>
         ],
       ),
       body: Stack(
+        key: _bodyKey,
         children: [
           // Image background - centered with contain fit
           Center(
             child: LayoutBuilder(
               builder: (ctx, constraints) {
-                // Calculate the actual rendered image size
-                final imageSize = _calculateContainSize(
-                  widget.imageWidth.toDouble(),
-                  widget.imageHeight.toDouble(),
-                  constraints.maxWidth,
-                  constraints.maxHeight,
-                );
-                
-                // Update display geometry on layout
+                // Recompute display geometry every time layout changes
                 WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (!_displayGeometryReady) {
-                    setState(() {
-                      _displaySize = imageSize;
-                      // For centered image, offset is the centering margin
-                      _displayOffset = Offset(
-                        (constraints.maxWidth - imageSize.width) / 2,
-                        (constraints.maxHeight - imageSize.height) / 2,
-                      );
-                      _displayGeometryReady = true;
-                    });
-                  }
+                  if (!mounted) return;
+                  _recomputeDisplayGeometry(constraints);
+                  // Trigger repaint with updated geometry
+                  setState(() {});
                 });
-                
+
                 return Image.file(
-                  key: _imageKey,
                   File(widget.imagePath),
                   fit: BoxFit.contain,
                   width: constraints.maxWidth,
@@ -463,7 +463,7 @@ class _ManualCropEditorState extends State<ManualCropEditor>
             ),
           ),
 
-          // Invisible gesture detector over the entire area for dragging
+          // Crop overlay painter - uses local coordinates within the body Stack
           Positioned.fill(
             child: IgnorePointer(
               child: CustomPaint(
@@ -472,7 +472,7 @@ class _ManualCropEditorState extends State<ManualCropEditor>
                   imageWidth: widget.imageWidth,
                   imageHeight: widget.imageHeight,
                   displaySize: _displaySize,
-                  displayOffset: _displayOffset,
+                  displayOffset: _displayOffsetLocal,
                   activeIndex: _draggingIndex,
                   color: const Color(0xFF5C4BF5),
                   pulseScale: _draggingIndex == -1 ? _pulseAnim.value : 1.0,

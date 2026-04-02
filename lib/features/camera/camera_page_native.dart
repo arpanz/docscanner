@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
 import '../../core/constants.dart';
 import '../../core/utils.dart';
 import '../../core/router.dart';
@@ -14,6 +15,7 @@ import '../../database/app_database.dart';
 import '../../shared/services/document_service.dart';
 import '../../shared/services/permission_service.dart';
 import '../../shared/services/scanner_bridge.dart';
+import 'widgets/crop_enhance_sheet.dart';
 import 'widgets/native_camera_preview.dart';
 
 /// Native camera page for Android using CameraX + OpenCV.
@@ -35,6 +37,8 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
   List<double> _corners = [];
   int _frameWidth = 1920;
   int _frameHeight = 1080;
+  bool _hasLiveDetection = false;
+  double _detectionConfidence = 0;
   bool _isCameraReady = false;
   bool _isProcessing = false;
   bool _buttonPressed = false;
@@ -44,7 +48,6 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
 
   // Auto-capture state
   bool _autoCaptureEnabled = true;
-  int _stableFrameCount = 0;
   List<double> _previousCorners = [];
   bool _autoCaptureTriggered = false;
 
@@ -56,11 +59,18 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
     super.initState();
     _countdownCtrl = AnimationController(
       vsync: this,
-      duration: Duration(
-        milliseconds:
-            (kAutoCaptureLockFrames * (1000 / 30)).round(), // ~30 fps
-      ),
-    );
+      duration: kAutoCaptureHoldDuration,
+    )..addStatusListener((status) {
+        if (status != AnimationStatus.completed ||
+            !_autoCaptureEnabled ||
+            _autoCaptureTriggered ||
+            _isProcessing ||
+            !_hasLiveDetection) {
+          return;
+        }
+        _autoCaptureTriggered = true;
+        unawaited(_capture(auto: true));
+      });
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _requestPermissionsAndStartCamera(),
     );
@@ -106,62 +116,70 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
   // Corner update + auto-capture logic
   // ---------------------------------------------------------------------------
 
-  void _onCornerDetected(
-    List<double> corners,
-    int frameWidth,
-    int frameHeight,
-  ) {
+  void _onDetectionChanged(EdgeDetectionData data) {
     if (!mounted) return;
 
+    final corners = data.corners;
+    final frameWidth = data.frameWidth;
+    final frameHeight = data.frameHeight;
     final cornersChanged =
         !listEquals(corners, _corners) ||
         frameWidth != _frameWidth ||
-        frameHeight != _frameHeight;
+        frameHeight != _frameHeight ||
+        _hasLiveDetection != data.isDetected ||
+        _detectionConfidence != data.confidence;
     if (cornersChanged) {
       setState(() {
         _corners = corners;
         _frameWidth = frameWidth;
         _frameHeight = frameHeight;
+        _hasLiveDetection = data.isDetected;
+        _detectionConfidence = data.confidence;
       });
     }
 
-    if (!_autoCaptureEnabled || _isProcessing || corners.length < 8) {
+    final hasReliableDetection =
+        data.isDetected &&
+        corners.length >= 8 &&
+        data.confidence >= kMinimumLiveDetectionConfidence;
+
+    if (!_autoCaptureEnabled || _isProcessing || !hasReliableDetection) {
       _resetStability();
+      _previousCorners = data.isDetected ? List<double>.from(corners) : [];
       return;
     }
 
     if (_cornersAreStable(corners)) {
-      _stableFrameCount++;
-      if (_stableFrameCount == 1) {
+      if (!_countdownCtrl.isAnimating && _countdownCtrl.value == 0) {
         _countdownCtrl.forward(from: 0);
-      }
-      if (_stableFrameCount >= kAutoCaptureLockFrames &&
-          !_autoCaptureTriggered) {
-        _autoCaptureTriggered = true;
-        _capture(auto: true);
       }
     } else {
       _resetStability();
     }
-    _previousCorners = List.from(corners);
+    _previousCorners = List<double>.from(corners);
   }
 
   bool _cornersAreStable(List<double> corners) {
     if (_previousCorners.length != corners.length) return false;
+    var totalDelta = 0.0;
+    var maxDelta = 0.0;
     for (var i = 0; i < corners.length; i++) {
-      if ((corners[i] - _previousCorners[i]).abs() > kCornerStableThreshold) {
+      final delta = (corners[i] - _previousCorners[i]).abs();
+      totalDelta += delta;
+      if (delta > maxDelta) maxDelta = delta;
+      if (delta > kCornerStableThreshold) {
         return false;
       }
     }
-    return true;
+    return maxDelta <= kCornerStableThreshold &&
+        (totalDelta / corners.length) <= (kCornerStableThreshold * 0.55);
   }
 
   void _resetStability() {
-    if (_stableFrameCount > 0) {
+    if (_countdownCtrl.value > 0) {
       _countdownCtrl.stop();
       _countdownCtrl.reset();
     }
-    _stableFrameCount = 0;
     _autoCaptureTriggered = false;
   }
 
@@ -185,37 +203,56 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
 
   Future<void> _capture({bool auto = false}) async {
     if (_isProcessing || !_isCameraReady) return;
-    if (_corners.length < 8) {
-      if (!auto && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No document detected. Try adjusting the angle.'),
-            backgroundColor: Colors.orange,
-          ),
+    if (auto &&
+        (!_hasLiveDetection ||
+            _detectionConfidence < kMinimumLiveDetectionConfidence ||
+            _corners.length < 8)) {
+      _resetStability();
+      return;
+    }
+
+    if (!auto) {
+      HapticFeedback.mediumImpact();
+      if (!_hasLiveDetection && mounted) {
+        showSnackBar(
+          context,
+          'Capturing anyway. You can adjust the crop manually.',
         );
       }
-      return;
     }
 
     setState(() => _isProcessing = true);
     _resetStability();
 
     try {
-      if (!auto) HapticFeedback.mediumImpact();
 
-      // Step 1 — capture raw uncropped frame so the crop editor shows the full image
+      // Step 1 — capture raw uncropped frame
       final rawPath = await ScannerBridge.captureRaw();
       if (!mounted) return;
 
-      // Step 2 — open crop editor on the full raw image with current detected corners
+      // Step 2 — get the actual EXIF-aware dimensions of the captured image
+      // The raw JPEG may have EXIF rotation metadata (e.g. 90° when phone
+      // is held in portrait). Flutter's Image.file auto-applies this, so
+      // we need dimensions that match what the user sees.
+      final dims = await ScannerBridge.getImageDimensions(rawPath);
+      if (!mounted) return;
+
+      final actualWidth = dims.width;
+      final actualHeight = dims.height;
+
+      // Step 3 — scale corners from analysis-frame coordinates to actual-image coordinates
+      // Analysis frame is typically 1280×720 (rotated), actual image may be 4032×3024
+      final initialCorners = _buildInitialCropCorners(actualWidth, actualHeight);
+
+      // Step 4 — open crop editor with actual image dimensions and scaled corners
       final adjustedCorners = await Navigator.of(context).push<List<double>>(
         MaterialPageRoute(
           fullscreenDialog: true,
           builder: (_) => ManualCropEditor(
             imagePath: rawPath,
-            initialCorners: List<double>.from(_corners),
-            imageWidth: _frameWidth,
-            imageHeight: _frameHeight,
+            initialCorners: initialCorners,
+            imageWidth: actualWidth,
+            imageHeight: actualHeight,
           ),
         ),
       );
@@ -224,6 +261,7 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
 
       // User cancelled the crop editor — discard
       if (adjustedCorners == null) {
+        await _deleteFileIfExists(rawPath);
         setState(() {
           _isProcessing = false;
           _autoCaptureTriggered = false;
@@ -231,14 +269,41 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
         return;
       }
 
-      // Step 3 — apply perspective correction with the confirmed corners
-      final finalPath = await ScannerBridge.captureDocument(adjustedCorners);
+      // Step 5 — apply perspective correction to the raw image using confirmed corners
+      // Corners are already in actual-image coordinates, no further scaling needed
+      var finalPath = await ScannerBridge.captureDocument(
+        rawPath,
+        adjustedCorners,
+      );
+      if (!mounted) return;
+
+      final editOptions = await showModalBottomSheet<ImageEditOptions>(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) => ImageEditSheet(
+          imagePath: finalPath,
+          title: 'Enhance scan',
+          confirmLabel: 'Use scan',
+          cancelLabel: 'Keep original',
+        ),
+      );
+      if (!mounted) return;
+
+      final croppedPath = finalPath;
+      if (editOptions != null && !editOptions.isIdentity) {
+        finalPath = await _applyEnhancementReview(finalPath, editOptions);
+        if (finalPath != croppedPath) {
+          await _deleteFileIfExists(croppedPath);
+        }
+      }
 
       setState(() {
         _capturedImages.add(finalPath);
         _isProcessing = false;
         _autoCaptureTriggered = false;
       });
+
+      await _deleteFileIfExists(rawPath);
 
       if (auto) HapticFeedback.mediumImpact();
 
@@ -256,6 +321,79 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
         showSnackBar(context, 'Capture failed: ${e.toString()}', isError: true);
       }
     }
+  }
+
+  List<double> _buildInitialCropCorners(int actualWidth, int actualHeight) {
+    if (_hasLiveDetection &&
+        _corners.length >= 8 &&
+        _frameWidth > 0 &&
+        _frameHeight > 0) {
+      final scaleX = actualWidth.toDouble() / _frameWidth.toDouble();
+      final scaleY = actualHeight.toDouble() / _frameHeight.toDouble();
+      final scaledCorners = <double>[];
+      for (var i = 0; i < _corners.length; i += 2) {
+        scaledCorners.add(
+          (_corners[i] * scaleX).clamp(0, actualWidth).toDouble(),
+        );
+        scaledCorners.add(
+          (_corners[i + 1] * scaleY).clamp(0, actualHeight).toDouble(),
+        );
+      }
+      if (_looksUsableQuad(scaledCorners, actualWidth, actualHeight)) {
+        return scaledCorners;
+      }
+    }
+
+    final insetX = actualWidth * 0.06;
+    final insetY = actualHeight * 0.06;
+    return [
+      insetX,
+      insetY,
+      actualWidth - insetX,
+      insetY,
+      actualWidth - insetX,
+      actualHeight - insetY,
+      insetX,
+      actualHeight - insetY,
+    ];
+  }
+
+  bool _looksUsableQuad(List<double> corners, int width, int height) {
+    if (corners.length < 8) return false;
+    final xs = [corners[0], corners[2], corners[4], corners[6]];
+    final ys = [corners[1], corners[3], corners[5], corners[7]];
+    final minX = xs.reduce((a, b) => a < b ? a : b);
+    final maxX = xs.reduce((a, b) => a > b ? a : b);
+    final minY = ys.reduce((a, b) => a < b ? a : b);
+    final maxY = ys.reduce((a, b) => a > b ? a : b);
+    return (maxX - minX) >= width * 0.2 && (maxY - minY) >= height * 0.2;
+  }
+
+  Future<String> _applyEnhancementReview(
+    String imagePath,
+    ImageEditOptions options,
+  ) {
+    final outputPath = p.join(
+      p.dirname(imagePath),
+      'scan_review_${DateTime.now().microsecondsSinceEpoch}.jpg',
+    );
+    return compute(
+      applyImageEditsFromMap,
+      ImageEditArgs(
+        inputPath: imagePath,
+        outputPath: outputPath,
+        options: options,
+      ).toMap(),
+    );
+  }
+
+  Future<void> _deleteFileIfExists(String path) async {
+    try {
+      final file = File(path);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {}
   }
 
   void _showContinueScanningSnackbar() {
@@ -408,7 +546,7 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
           // Native camera preview
           Positioned.fill(
             child: NativeCameraPreview(
-              onCornerDetected: _onCornerDetected,
+              onDetectionChanged: _onDetectionChanged,
               onCameraReady: _onCameraReady,
               onError: _onCameraError,
             ),
@@ -427,9 +565,8 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
                     strokeWidth: 2.5,
                     color: _getOverlayColor(),
                     fillColor: _getOverlayColor().withValues(alpha: 0.10),
-                    stableFrameCount:
-                        _autoCaptureEnabled ? _stableFrameCount : 0,
-                    autoCaptureTotalFrames: kAutoCaptureLockFrames,
+                    captureProgress:
+                        _autoCaptureEnabled ? _countdownCtrl.value : 0,
                   ),
                 ),
               ),
@@ -451,15 +588,15 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
-                      color: _corners.length >= 8
+                      color: _hasLiveDetection
                           ? const Color(0xFF5C4BF5).withValues(alpha: 0.88)
                           : Colors.black.withValues(alpha: 0.55),
                       borderRadius: BorderRadius.circular(24),
                     ),
                     child: Text(
-                      _corners.length >= 8
+                      _hasLiveDetection
                           ? (_autoCaptureEnabled
-                              ? 'Hold still…'
+                              ? 'Hold still...'
                               : 'Document detected')
                           : 'Align with a document',
                       style: const TextStyle(
@@ -699,6 +836,9 @@ class _CameraPageNativeState extends ConsumerState<CameraPageNative>
   Color _getOverlayColor() {
     if (_corners.isEmpty || _corners.length < 8) {
       return Colors.white.withValues(alpha: 0.55);
+    }
+    if (!_hasLiveDetection) {
+      return Colors.white.withValues(alpha: 0.72);
     }
     return const Color(0xFF5C4BF5);
   }

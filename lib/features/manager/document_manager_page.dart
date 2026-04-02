@@ -29,6 +29,13 @@ class DocumentManagerPage extends ConsumerStatefulWidget {
 
 class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
   bool _didCheckOnboarding = false;
+  bool _repairingLibrary = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _repairDocumentIndex());
+  }
 
   @override
   void didChangeDependencies() {
@@ -41,6 +48,7 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
   Future<void> _maybeShowOnboarding() async {
     if (!mounted) return;
     final hasSeenOnboarding = ref.read(onboardingSeenProvider);
+    await _repairDocumentIndex();
     final docs = await ref.read(documentsDaoProvider).getAllDocuments();
     if (hasSeenOnboarding || docs.isNotEmpty || !mounted) return;
 
@@ -66,8 +74,29 @@ class _DocumentManagerPageState extends ConsumerState<DocumentManagerPage> {
   }
 
   Future<void> _refreshDocuments() async {
+    await _repairDocumentIndex(showRecoveredCount: true);
     await ref.read(documentServiceProvider).refreshAllDocumentsMeta();
     ref.invalidate(allDocumentsProvider);
+  }
+
+  Future<void> _repairDocumentIndex({bool showRecoveredCount = false}) async {
+    if (_repairingLibrary) return;
+    _repairingLibrary = true;
+    try {
+      final recovered =
+          await ref.read(documentServiceProvider).repairDocumentLibrary();
+      ref.invalidate(allDocumentsProvider);
+      if (showRecoveredCount && recovered > 0 && mounted) {
+        showSnackBar(
+          context,
+          'Recovered $recovered saved folder${recovered == 1 ? '' : 's'}',
+        );
+      }
+    } catch (_) {
+      // Keep the manager page usable even if the repair pass fails.
+    } finally {
+      _repairingLibrary = false;
+    }
   }
 
   @override

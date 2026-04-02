@@ -12,7 +12,18 @@ import 'package:docscanner/app.dart';
 
 void main() {
   testWidgets('app widget builds', (WidgetTester tester) async {
-    await tester.pumpWidget(const ProviderScope(child: DocScannerApp()));
+    final container = ProviderContainer();
+    addTearDown(() async {
+      container.dispose();
+      await tester.pump();
+    });
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const DocScannerApp(),
+      ),
+    );
 
     expect(find.byType(DocScannerApp), findsOneWidget);
   });

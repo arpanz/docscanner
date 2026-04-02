@@ -23,7 +23,15 @@ class ScannerBridge {
         final corners = List<double>.from(data['corners'] ?? []);
         final frameWidth = (data['frameWidth'] ?? 0).toInt();
         final frameHeight = (data['frameHeight'] ?? 0).toInt();
-        return EdgeDetectionData(corners, frameWidth, frameHeight);
+        final isDetected = data['isDetected'] == true;
+        final confidence = (data['confidence'] as num?)?.toDouble() ?? 0.0;
+        return EdgeDetectionData(
+          corners: corners,
+          frameWidth: frameWidth,
+          frameHeight: frameHeight,
+          isDetected: isDetected,
+          confidence: confidence,
+        );
       });
 
   /// Start the native camera preview with edge detection.
@@ -63,19 +71,22 @@ class ScannerBridge {
     return result ?? '';
   }
 
-  /// Capture a document with perspective correction applied.
+  /// Apply perspective correction to the already-captured raw image.
   ///
-  /// [corners] The 4 corner points of the document to extract (in analysis
-  /// frame coordinates). Corners are automatically scaled to the capture
-  /// resolution on the native side.
+  /// [rawPath] Path to the raw image captured by [captureRaw].
+  /// [corners] The 4 corner points in the raw image's coordinate space
+  ///           (already scaled to actual image dimensions by the caller).
   /// Returns the file path of the perspective-corrected image.
-  static Future<String> captureDocument(List<double> corners) async {
+  static Future<String> captureDocument(
+    String rawPath,
+    List<double> corners,
+  ) async {
     if (!Platform.isAndroid) {
       throw UnsupportedError('ScannerBridge is only available on Android');
     }
     final result = await _methodChannel.invokeMethod<String>(
       'captureDocument',
-      {'corners': corners},
+      {'rawPath': rawPath, 'corners': corners},
     );
     return result ?? '';
   }
@@ -140,6 +151,25 @@ class ScannerBridge {
     });
     return result ?? '';
   }
+
+  /// Get the actual display dimensions of an image file.
+  ///
+  /// Returns dimensions accounting for EXIF rotation, so the width/height
+  /// match what the user sees when the image is displayed.
+  static Future<({int width, int height})> getImageDimensions(
+    String path,
+  ) async {
+    if (!Platform.isAndroid) {
+      throw UnsupportedError('ScannerBridge is only available on Android');
+    }
+    final result = await _methodChannel.invokeMethod<Map>(
+      'getImageDimensions',
+      {'path': path},
+    );
+    final width = (result?['width'] ?? 0) as int;
+    final height = (result?['height'] ?? 0) as int;
+    return (width: width, height: height);
+  }
 }
 
 /// Enhancement modes available for document processing.
@@ -164,9 +194,17 @@ extension EnhancementModeExtension on EnhancementMode {
 
 /// Data class holding edge detection results from native side.
 class EdgeDetectionData {
+  const EdgeDetectionData({
+    required this.corners,
+    required this.frameWidth,
+    required this.frameHeight,
+    required this.isDetected,
+    required this.confidence,
+  });
+
   final List<double> corners;
   final int frameWidth;
   final int frameHeight;
-
-  EdgeDetectionData(this.corners, this.frameWidth, this.frameHeight);
+  final bool isDetected;
+  final double confidence;
 }

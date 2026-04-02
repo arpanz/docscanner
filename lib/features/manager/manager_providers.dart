@@ -8,12 +8,12 @@ enum SortOption { dateDesc, dateAsc, nameAsc, nameDesc, pagesDesc }
 
 extension SortOptionLabel on SortOption {
   String get label => switch (this) {
-        SortOption.dateDesc => 'Newest first',
-        SortOption.dateAsc => 'Oldest first',
-        SortOption.nameAsc => 'Name A-Z',
-        SortOption.nameDesc => 'Name Z-A',
-        SortOption.pagesDesc => 'Most images',
-      };
+    SortOption.dateDesc => 'Newest first',
+    SortOption.dateAsc => 'Oldest first',
+    SortOption.nameAsc => 'Name A-Z',
+    SortOption.nameDesc => 'Name Z-A',
+    SortOption.pagesDesc => 'Most images',
+  };
 }
 
 extension SortOptionStorage on SortOption {

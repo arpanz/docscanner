@@ -1,6 +1,7 @@
 // lib/database/daos.dart
 import 'dart:io';
 import 'package:drift/drift.dart';
+import 'package:path/path.dart' as p;
 import 'app_database.dart';
 import 'tables.dart';
 
@@ -83,7 +84,7 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
     // User pages: images that are NOT internal files (prefixed with ~)
     final userImages = allFiles
         .where((f) {
-          final name = f.path.split('/').last;
+          final name = p.basename(f.path);
           if (name.startsWith('~')) return false;
           return f.path.toLowerCase().endsWith('.jpg') ||
               f.path.toLowerCase().endsWith('.jpeg') ||
@@ -93,8 +94,7 @@ class DocumentsDao extends DatabaseAccessor<AppDatabase>
       ..sort((a, b) => a.path.compareTo(b.path));
 
     // Cover: prefer ~cover.png (raster), fall back to first user image
-    final coverFile = allFiles.where((f) =>
-        f.path.split('/').last == '~cover.png').firstOrNull;
+    final coverFile = allFiles.where((f) => p.basename(f.path) == '~cover.png').firstOrNull;
 
     if (userImages.isEmpty && coverFile == null) {
       final pdfs = allFiles.where(

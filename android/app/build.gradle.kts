@@ -57,6 +57,9 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.4.2")
     implementation("androidx.camera:camera-view:1.4.2")
 
+    // EXIF - Read image orientation metadata for correct rotation handling
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
+
     // OpenCV - Image processing, edge detection, perspective correction
     implementation("org.opencv:opencv:4.10.0")
 

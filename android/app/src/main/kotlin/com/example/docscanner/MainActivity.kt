@@ -92,8 +92,9 @@ class MainActivity : FlutterActivity() {
                     }
                     "captureRaw" -> captureRaw(result)
                     "captureDocument" -> {
+                        val rawPath = call.argument<String>("rawPath") ?: ""
                         val corners = call.argument<List<Double>>("corners") ?: emptyList()
-                        captureDocument(corners, result)
+                        captureDocument(rawPath, corners, result)
                     }
                     "cropImage" -> {
                         val path = call.argument<String>("path") ?: ""
@@ -113,6 +114,10 @@ class MainActivity : FlutterActivity() {
                     "extractText" -> {
                         val path = call.argument<String>("path") ?: ""
                         extractText(path, result)
+                    }
+                    "getImageDimensions" -> {
+                        val path = call.argument<String>("path") ?: ""
+                        getImageDimensions(path, result)
                     }
                     else -> result.notImplemented()
                 }
@@ -154,12 +159,19 @@ class MainActivity : FlutterActivity() {
 
             scannerEngine?.startCamera(currentPreviewView)
 
-            scannerEngine?.onEdgeDetected = { corners, frameWidth, frameHeight ->
+            scannerEngine?.onEdgeDetected = {
+                corners,
+                frameWidth,
+                frameHeight,
+                isDetected,
+                confidence ->
                 runOnUiThread {
                     edgeEventSink?.success(mapOf(
                         "corners" to corners,
                         "frameWidth" to frameWidth,
-                        "frameHeight" to frameHeight
+                        "frameHeight" to frameHeight,
+                        "isDetected" to isDetected,
+                        "confidence" to confidence
                     ))
                 }
             }
@@ -194,10 +206,20 @@ class MainActivity : FlutterActivity() {
         } ?: result.error("ENGINE_ERROR", "Scanner engine not initialized", null)
     }
 
-    private fun captureDocument(corners: List<Double>, result: MethodChannel.Result) {
-        scannerEngine?.captureDocument(corners) { imagePath ->
-            CoroutineScope(Dispatchers.Main).launch { result.success(imagePath) }
-        } ?: result.error("ENGINE_ERROR", "Scanner engine not initialized", null)
+    private fun captureDocument(rawPath: String, corners: List<Double>, result: MethodChannel.Result) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                scannerEngine?.captureDocumentFromRaw(rawPath, corners) { imagePath ->
+                    CoroutineScope(Dispatchers.Main).launch { result.success(imagePath) }
+                } ?: CoroutineScope(Dispatchers.Main).launch {
+                    result.error("ENGINE_ERROR", "Scanner engine not initialized", null)
+                }
+            } catch (e: Exception) {
+                CoroutineScope(Dispatchers.Main).launch {
+                    result.error("CAPTURE_ERROR", e.message, null)
+                }
+            }
+        }
     }
 
     private fun cropImage(path: String, corners: List<Double>, result: MethodChannel.Result) {
@@ -237,6 +259,21 @@ class MainActivity : FlutterActivity() {
         CoroutineScope(Dispatchers.IO).launch {
             scannerEngine?.extractText(path) { text ->
                 CoroutineScope(Dispatchers.Main).launch { result.success(text) }
+            }
+        }
+    }
+
+    private fun getImageDimensions(path: String, result: MethodChannel.Result) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val (width, height) = scannerEngine?.getImageDimensions(path) ?: Pair(0, 0)
+                CoroutineScope(Dispatchers.Main).launch {
+                    result.success(mapOf("width" to width, "height" to height))
+                }
+            } catch (e: Exception) {
+                CoroutineScope(Dispatchers.Main).launch {
+                    result.error("DIMENSIONS_ERROR", e.message, null)
+                }
             }
         }
     }

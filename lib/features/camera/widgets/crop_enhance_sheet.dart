@@ -44,6 +44,12 @@ class ImageEditOptions {
   final double contrast;
   final int rotationTurns;
 
+  bool get isIdentity =>
+      filter == FilterMode.original &&
+      brightness.abs() < 0.001 &&
+      (contrast - 1).abs() < 0.001 &&
+      rotationTurns % 4 == 0;
+
   ImageEditOptions copyWith({
     FilterMode? filter,
     double? brightness,
@@ -101,6 +107,7 @@ String applyImageEditsFromMap(Map<String, Object?> rawArgs) {
   final bytes = File(inputPath).readAsBytesSync();
   var image = img.decodeImage(bytes);
   if (image == null) throw Exception('Failed to decode image');
+  image = img.bakeOrientation(image);
 
   switch (filter) {
     case FilterMode.original:
@@ -111,15 +118,15 @@ String applyImageEditsFromMap(Map<String, Object?> rawArgs) {
     case FilterMode.enhance:
       image = img.adjustColor(
         image,
-        contrast: 1.22,
-        saturation: 0.9,
-        brightness: 0.04,
+        contrast: 1.28,
+        saturation: 0.94,
+        brightness: 0.03,
       );
       break;
     case FilterMode.blackwhite:
       image = img.grayscale(image);
-      image = img.adjustColor(image, contrast: 1.4, brightness: 0.06);
-      image = _threshold(image, 165);
+      image = img.adjustColor(image, contrast: 1.55, brightness: 0.04);
+      image = _threshold(image, _autoThreshold(image));
       break;
   }
 
@@ -149,6 +156,45 @@ img.Image _threshold(img.Image image, int threshold) {
       ..b = value;
   }
   return image;
+}
+
+int _autoThreshold(img.Image image) {
+  final histogram = List<int>.filled(256, 0);
+  final totalPixels = image.width * image.height;
+  if (totalPixels == 0) return 160;
+
+  var total = 0.0;
+  for (final pixel in image) {
+    final luminance = pixel.r.toInt();
+    histogram[luminance]++;
+    total += luminance;
+  }
+
+  var sumBackground = 0.0;
+  var weightBackground = 0;
+  var maxVariance = -1.0;
+  var threshold = 160;
+
+  for (var i = 0; i < histogram.length; i++) {
+    weightBackground += histogram[i];
+    if (weightBackground == 0) continue;
+
+    final weightForeground = totalPixels - weightBackground;
+    if (weightForeground == 0) break;
+
+    sumBackground += i * histogram[i];
+    final meanBackground = sumBackground / weightBackground;
+    final meanForeground = (total - sumBackground) / weightForeground;
+    final betweenClassVariance =
+        weightBackground * weightForeground * (meanBackground - meanForeground) * (meanBackground - meanForeground);
+
+    if (betweenClassVariance > maxVariance) {
+      maxVariance = betweenClassVariance;
+      threshold = i;
+    }
+  }
+
+  return threshold.clamp(96, 208).toInt();
 }
 
 // ---------------------------------------------------------------------------
@@ -183,13 +229,13 @@ List<double> _matrixForFilter(FilterMode filter) {
       saturation = 0;
       break;
     case FilterMode.enhance:
-      contrast *= 1.22;
-      brightness += 0.04;
-      saturation = 0.9;
+      contrast *= 1.28;
+      brightness += 0.03;
+      saturation = 0.94;
       break;
     case FilterMode.blackwhite:
       contrast *= 1.55;
-      brightness += 0.06;
+      brightness += 0.04;
       saturation = 0;
       break;
   }
@@ -388,10 +434,16 @@ class ImageEditSheet extends StatefulWidget {
     super.key,
     required this.imagePath,
     this.initial = const ImageEditOptions(),
+    this.title = 'Edit page',
+    this.confirmLabel = 'Apply',
+    this.cancelLabel = 'Cancel',
   });
 
   final String imagePath;
   final ImageEditOptions initial;
+  final String title;
+  final String confirmLabel;
+  final String cancelLabel;
 
   @override
   State<ImageEditSheet> createState() => _ImageEditSheetState();
@@ -425,11 +477,11 @@ class _ImageEditSheetState extends State<ImageEditSheet> {
               children: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
+                  child: Text(widget.cancelLabel),
                 ),
                 Expanded(
                   child: Text(
-                    'Edit page',
+                    widget.title,
                     textAlign: TextAlign.center,
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
@@ -438,7 +490,7 @@ class _ImageEditSheetState extends State<ImageEditSheet> {
                 ),
                 FilledButton(
                   onPressed: () => Navigator.pop(context, _options),
-                  child: const Text('Apply'),
+                  child: Text(widget.confirmLabel),
                 ),
               ],
             ),
@@ -575,13 +627,13 @@ List<double> _previewMatrix(ImageEditOptions options) {
       saturation = 0;
       break;
     case FilterMode.enhance:
-      contrast *= 1.22;
-      brightness += 0.04;
-      saturation = 0.9;
+      contrast *= 1.28;
+      brightness += 0.03;
+      saturation = 0.94;
       break;
     case FilterMode.blackwhite:
       contrast *= 1.55;
-      brightness += 0.06;
+      brightness += 0.04;
       saturation = 0;
       break;
   }

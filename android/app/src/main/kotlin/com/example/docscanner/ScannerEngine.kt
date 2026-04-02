@@ -11,6 +11,7 @@ import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.LifecycleOwner
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
@@ -74,14 +75,19 @@ class ScannerEngine(
     // ── Temporal smoothing (EMA) state ──────────────────────────────────────
     private var smoothedCorners: List<Double>? = null
     private var noDetectionCount = 0
-    private val emaAlpha = 0.30
-    private val snapDistanceThreshold = 50.0  // px – snap immediately on big jumps
-    private val maxNoDetectionFrames = 12      // keep overlay visible longer on brief misses
+    private val emaAlpha = 0.16
+    private val snapDistanceThreshold = 180.0
+    private val maxNoDetectionFrames = 12
 
     // Callbacks
     var onFrameAnalyzed: ((Bitmap, List<Double>, Int, Int) -> Unit)? = null
-    var onEdgeDetected: ((List<Double>, Int, Int) -> Unit)? = null
+    var onEdgeDetected: ((List<Double>, Int, Int, Boolean, Double) -> Unit)? = null
     var onError: ((String) -> Unit)? = null
+
+    private data class DetectedDocument(
+        val corners: List<Double>,
+        val confidence: Double
+    )
 
     private fun initializeOpenCv(): Boolean {
         return try {
@@ -135,17 +141,22 @@ class ScannerEngine(
                             analysis.setAnalyzer(cameraExecutor) { imageProxy ->
                                 try {
                                     val bitmap = imageProxy.toBitmap()
-                                    val corners = detectDocumentContour(bitmap)
+                                    val detection = detectDocument(bitmap)
                                     val frameWidth = bitmap.width
                                     val frameHeight = bitmap.height
                                     lastAnalyzedFrameWidth = frameWidth
                                     lastAnalyzedFrameHeight = frameHeight
 
-                                    if (corners != null) {
+                                    if (detection != null) {
                                         noDetectionCount = 0
-                                        val rawList = flattenCorners(corners)
-                                        val emitted = applyTemporalSmoothing(rawList)
-                                        onEdgeDetected?.invoke(emitted, frameWidth, frameHeight)
+                                        val emitted = applyTemporalSmoothing(detection.corners)
+                                        onEdgeDetected?.invoke(
+                                            emitted,
+                                            frameWidth,
+                                            frameHeight,
+                                            true,
+                                            detection.confidence
+                                        )
                                         onFrameAnalyzed?.invoke(bitmap, emitted, frameWidth, frameHeight)
                                     } else {
                                         noDetectionCount++
@@ -153,7 +164,7 @@ class ScannerEngine(
                                             smoothedCorners = null
                                         }
                                         smoothedCorners?.let { prev ->
-                                            onEdgeDetected?.invoke(prev, frameWidth, frameHeight)
+                                            onEdgeDetected?.invoke(prev, frameWidth, frameHeight, false, 0.0)
                                         }
                                     }
                                 } catch (t: Throwable) {
@@ -239,70 +250,48 @@ class ScannerEngine(
     }
 
     /**
-     * Capture a high-resolution image and apply perspective correction.
+     * Apply perspective correction to an already-captured raw image.
      *
-     * @param corners The 4 corner points of the detected document (in analysis frame coordinates)
-     * @param onCaptureComplete Callback with the saved file path
+     * Unlike the old approach that took a second photo, this works on the raw
+     * file from [captureRaw], so the crop always matches what the user saw.
+     *
+     * @param rawImagePath Path to the raw captured image
+     * @param corners The 4 corner points in the raw image's coordinate space
+     *                (already scaled to actual image dimensions by Flutter)
+     * @param onCaptureComplete Callback with the saved cropped file path
      */
-    fun captureDocument(corners: List<Double>, onCaptureComplete: (String) -> Unit) {
+    fun captureDocumentFromRaw(rawImagePath: String, corners: List<Double>, onCaptureComplete: (String) -> Unit) {
         if (corners.size < 8) {
             onError?.invoke("Invalid corners data")
             return
         }
 
-        val imageCapture = imageCapture ?: run {
-            onError?.invoke("Camera not initialized")
-            return
-        }
+        try {
+            // Decode and apply EXIF rotation to get the correctly oriented bitmap
+            val bitmap = decodeWithExifRotation(rawImagePath)
+                ?: throw IllegalArgumentException("Cannot decode image: $rawImagePath")
 
-        val outputDir = context.filesDir
-        val outputFile = File(outputDir, "scan_${System.currentTimeMillis()}.jpg")
-        val outputOptions = ImageCapture.OutputFileOptions.Builder(outputFile).build()
+            val cornerPoints = deflattenCorners(corners)
+            val correctedBitmap = perspectiveCorrect(bitmap, cornerPoints)
 
-        imageCapture.takePicture(
-            outputOptions,
-            ContextCompat.getMainExecutor(context),
-            object : ImageCapture.OnImageSavedCallback {
-                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                    val capturedBitmap = BitmapFactory.decodeFile(outputFile.absolutePath)
-                        ?: run {
-                            onError?.invoke("Failed to decode captured image")
-                            return
-                        }
-
-                    try {
-                        val scaleX = capturedBitmap.width.toDouble() / lastAnalyzedFrameWidth
-                        val scaleY = capturedBitmap.height.toDouble() / lastAnalyzedFrameHeight
-
-                        val scaledCorners = corners.chunked(2).map { (x, y) ->
-                            listOf(x * scaleX, y * scaleY)
-                        }.flatten()
-
-                        val cornerPoints = deflattenCorners(scaledCorners)
-                        val correctedBitmap = perspectiveCorrect(capturedBitmap, cornerPoints)
-                        correctedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, FileOutputStream(outputFile))
-                        correctedBitmap.recycle()
-                        onCaptureComplete(outputFile.absolutePath)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Perspective correction failed", e)
-                        onError?.invoke("Failed to process image: ${e.message}")
-                    } finally {
-                        capturedBitmap.recycle()
-                    }
-                }
-
-                override fun onError(exception: ImageCaptureException) {
-                    Log.e(TAG, "Capture failed", exception)
-                    onError?.invoke("Capture failed: ${exception.message}")
-                }
+            val outputFile = File(context.filesDir, "scan_${System.currentTimeMillis()}.jpg")
+            FileOutputStream(outputFile).use {
+                correctedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, it)
             }
-        )
+            correctedBitmap.recycle()
+            bitmap.recycle()
+            onCaptureComplete(outputFile.absolutePath)
+        } catch (e: Exception) {
+            Log.e(TAG, "Perspective correction failed", e)
+            onError?.invoke("Failed to process image: ${e.message}")
+        }
     }
 
     fun cropImage(imagePath: String, corners: List<Double>): String {
         if (corners.size < 8) throw IllegalArgumentException("Invalid corners data")
 
-        val inputBitmap = BitmapFactory.decodeFile(imagePath)
+        // Decode with EXIF rotation so corners match the displayed orientation
+        val inputBitmap = decodeWithExifRotation(imagePath)
             ?: throw IllegalArgumentException("Cannot decode image: $imagePath")
 
         val croppedBitmap = try {
@@ -320,18 +309,14 @@ class ScannerEngine(
         }
     }
 
-    /**
-     * Detect document contour in a bitmap using OpenCV.
-     * Returns 4 corner points if a document is found, null otherwise.
-     */
-    fun detectDocumentContour(bitmap: Bitmap): MatOfPoint2f? {
+    private fun detectDocument(bitmap: Bitmap): DetectedDocument? {
         if (!ensureOpenCvReady()) return null
 
         var mat: Mat? = null
         var gray: Mat? = null
         var blurred: Mat? = null
-        var edges: Mat? = null
-        val contours = ArrayList<MatOfPoint>()
+        var edgeMask: Mat? = null
+        var adaptiveMask: Mat? = null
 
         try {
             mat = Mat()
@@ -339,34 +324,25 @@ class ScannerEngine(
 
             gray = Mat()
             blurred = Mat()
-            edges = Mat()
 
             Imgproc.cvtColor(mat, gray, Imgproc.COLOR_RGBA2GRAY)
-            Imgproc.GaussianBlur(gray, blurred, Size(5.0, 5.0), 0.0)
+            Imgproc.GaussianBlur(gray, blurred, Size(7.0, 7.0), 0.0)
 
-            val lowerThreshold = computeAdaptiveCannyThreshold(blurred)
-            val upperThreshold = lowerThreshold * 2.5
-            Imgproc.Canny(blurred, edges, lowerThreshold, upperThreshold)
+            edgeMask = buildEdgeMask(blurred)
+            adaptiveMask = buildAdaptiveMask(blurred)
 
-            val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0))
-            val closedEdges = Mat()
-            Imgproc.morphologyEx(edges, closedEdges, Imgproc.MORPH_CLOSE, kernel)
-            kernel.release()
+            val frameWidth = mat.width()
+            val frameHeight = mat.height()
+            val frameArea = frameWidth * frameHeight.toDouble()
+            val minArea = frameArea * 0.08
 
-            val hierarchy = Mat()
-            Imgproc.findContours(
-                closedEdges, contours, hierarchy,
-                Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE
-            )
-            hierarchy.release()
-            closedEdges.release()
+            val candidates = mutableListOf<DetectedDocument>()
+            candidates += collectCandidates(edgeMask, minArea, frameWidth, frameHeight, frameArea)
+            candidates += collectCandidates(adaptiveMask, minArea, frameWidth, frameHeight, frameArea)
 
-            // Minimum area = 3.5% of frame — detects documents that don't fill the frame
-            val minArea = (mat.width() * mat.height()) * 0.035
-            return contours
-                .filter { Imgproc.contourArea(it) > minArea }
-                .sortedByDescending { Imgproc.contourArea(it) }
-                .firstNotNullOfOrNull { contour -> approxQuad(contour) }
+            return candidates
+                .filter { it.confidence >= 0.35 }
+                .maxByOrNull { it.confidence }
         } catch (t: Throwable) {
             Log.e(TAG, "Edge detection failed", t)
             return null
@@ -374,7 +350,66 @@ class ScannerEngine(
             mat?.release()
             gray?.release()
             blurred?.release()
-            edges?.release()
+            edgeMask?.release()
+            adaptiveMask?.release()
+        }
+    }
+
+    private fun buildEdgeMask(blurred: Mat): Mat {
+        val edges = Mat()
+        val lowerThreshold = computeAdaptiveCannyThreshold(blurred)
+        val upperThreshold = lowerThreshold * 2.4
+        Imgproc.Canny(blurred, edges, lowerThreshold, upperThreshold)
+
+        val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0))
+        val closed = Mat()
+        Imgproc.morphologyEx(edges, closed, Imgproc.MORPH_CLOSE, kernel)
+        Imgproc.dilate(closed, closed, kernel)
+        kernel.release()
+        edges.release()
+        return closed
+    }
+
+    private fun buildAdaptiveMask(blurred: Mat): Mat {
+        val adaptive = Mat()
+        Imgproc.adaptiveThreshold(
+            blurred,
+            adaptive,
+            255.0,
+            Imgproc.ADAPTIVE_THRESH_GAUSSIAN_C,
+            Imgproc.THRESH_BINARY,
+            41,
+            7.0
+        )
+        Core.bitwise_not(adaptive, adaptive)
+        val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0))
+        Imgproc.morphologyEx(adaptive, adaptive, Imgproc.MORPH_CLOSE, kernel)
+        kernel.release()
+        return adaptive
+    }
+
+    private fun collectCandidates(
+        mask: Mat,
+        minArea: Double,
+        frameWidth: Int,
+        frameHeight: Int,
+        frameArea: Double
+    ): List<DetectedDocument> {
+        val contours = ArrayList<MatOfPoint>()
+        val hierarchy = Mat()
+        try {
+            Imgproc.findContours(
+                mask,
+                contours,
+                hierarchy,
+                Imgproc.RETR_LIST,
+                Imgproc.CHAIN_APPROX_SIMPLE
+            )
+            return contours.mapNotNull { contour ->
+                buildCandidateFromContour(contour, minArea, frameWidth, frameHeight, frameArea)
+            }
+        } finally {
+            hierarchy.release()
             contours.forEach { it.release() }
         }
     }
@@ -390,69 +425,179 @@ class ScannerEngine(
         return (100.0 * contrastFactor).coerceIn(50.0, 150.0)
     }
 
-    private fun approxQuad(contour: MatOfPoint): MatOfPoint2f? {
-        val contour2f = MatOfPoint2f(*contour.toArray().map { p ->
-            Point(p.x.toDouble(), p.y.toDouble())
-        }.toTypedArray())
+    private fun buildCandidateFromContour(
+        contour: MatOfPoint,
+        minArea: Double,
+        frameWidth: Int,
+        frameHeight: Int,
+        frameArea: Double
+    ): DetectedDocument? {
+        val area = kotlin.math.abs(Imgproc.contourArea(contour))
+        if (area < minArea) return null
 
-        val peri = Imgproc.arcLength(contour2f, true)
-        val approx = MatOfPoint2f()
-        // Looser epsilon (0.03) handles slightly curved/warped document edges
-        Imgproc.approxPolyDP(contour2f, approx, 0.03 * peri, true)
-        contour2f.release()
-
-        if (approx.total() != 4L) {
-            approx.release()
+        val quad =
+            approxQuad(contour) ?: minAreaRectQuad(contour, area)
+            ?: return null
+        if (!isValidQuadrilateral(quad, frameWidth, frameHeight, frameArea)) {
             return null
         }
 
-        val ordered = orderPoints(approx)
-        if (!isValidQuadrilateral(ordered)) {
-            ordered.release()
-            return null
-        }
-        return ordered
+        return DetectedDocument(
+            corners = flattenCornerPoints(quad),
+            confidence = scoreQuad(quad, frameWidth, frameHeight, frameArea)
+        )
     }
 
-    private fun isValidQuadrilateral(points: MatOfPoint2f): Boolean {
-        val pts = points.toArray()
-        if (pts.size < 4) return false
-
-        val crossProducts = mutableListOf<Double>()
-        for (i in 0..3) {
-            val p1 = pts[i]; val p2 = pts[(i + 1) % 4]; val p3 = pts[(i + 2) % 4]
-            val v1x = p2.x - p1.x; val v1y = p2.y - p1.y
-            val v2x = p3.x - p2.x; val v2y = p3.y - p2.y
-            crossProducts.add(v1x * v2y - v1y * v2x)
+    private fun approxQuad(contour: MatOfPoint): Array<Point>? {
+        val contour2f = MatOfPoint2f(*contour.toArray())
+        try {
+            val perimeter = Imgproc.arcLength(contour2f, true)
+            val epsilons = doubleArrayOf(0.018, 0.024, 0.032)
+            for (epsilon in epsilons) {
+                val approx = MatOfPoint2f()
+                try {
+                    Imgproc.approxPolyDP(contour2f, approx, epsilon * perimeter, true)
+                    if (approx.total() == 4L) {
+                        return orderPoints(approx.toArray())
+                    }
+                } finally {
+                    approx.release()
+                }
+            }
+            return null
+        } finally {
+            contour2f.release()
         }
-        val allPositive = crossProducts.all { it > 0 }
-        val allNegative = crossProducts.all { it < 0 }
-        if (!allPositive && !allNegative) return false
+    }
 
-        val widthTop = distance(pts[0], pts[1])
-        val widthBottom = distance(pts[3], pts[2])
-        val heightLeft = distance(pts[0], pts[3])
-        val heightRight = distance(pts[1], pts[2])
-        val avgWidth = (widthTop + widthBottom) / 2
-        val avgHeight = (heightLeft + heightRight) / 2
-        if (avgWidth > 0 && avgHeight > 0) {
-            val aspectRatio = avgWidth / avgHeight
-            if (aspectRatio > 10.0 || aspectRatio < 0.1) return false
+    private fun minAreaRectQuad(contour: MatOfPoint, contourArea: Double): Array<Point>? {
+        val contour2f = MatOfPoint2f(*contour.toArray())
+        try {
+            val rect = Imgproc.minAreaRect(contour2f)
+            val rectArea = rect.size.width * rect.size.height
+            if (rectArea <= 0.0) return null
+            if ((contourArea / rectArea) < 0.72) return null
+
+            val points = Array(4) { Point() }
+            rect.points(points)
+            return orderPoints(points)
+        } finally {
+            contour2f.release()
         }
+    }
 
-        if (Imgproc.contourArea(points) < 1000) return false
+    private fun scoreQuad(
+        points: Array<Point>,
+        frameWidth: Int,
+        frameHeight: Int,
+        frameArea: Double
+    ): Double {
+        val areaRatio = polygonArea(points) / frameArea
+        val sizeScore = (1.0 - kotlin.math.abs(areaRatio - 0.42) / 0.42).coerceIn(0.0, 1.0)
+        val center = Point(
+            points.map { it.x }.average(),
+            points.map { it.y }.average()
+        )
+        val frameCenter = Point(frameWidth / 2.0, frameHeight / 2.0)
+        val maxDistance = kotlin.math.hypot(frameWidth.toDouble(), frameHeight.toDouble()) / 2.0
+        val centerScore = (1.0 - distance(center, frameCenter) / maxDistance).coerceIn(0.0, 1.0)
+        val widthTop = distance(points[0], points[1])
+        val widthBottom = distance(points[3], points[2])
+        val heightLeft = distance(points[0], points[3])
+        val heightRight = distance(points[1], points[2])
+        val avgWidth = (widthTop + widthBottom) / 2.0
+        val avgHeight = (heightLeft + heightRight) / 2.0
+        val aspectRatio = if (avgHeight == 0.0) 0.0 else avgWidth / avgHeight
+        val aspectScore = when {
+            aspectRatio in 0.35..2.6 -> 1.0
+            aspectRatio in 0.25..4.0 -> 0.72
+            else -> 0.0
+        }
+        val angleScore = averageAngleScore(points)
+        val continuityScore = continuityScore(points, frameWidth, frameHeight)
+
+        return (
+            (sizeScore * 0.30) +
+                (centerScore * 0.16) +
+                (aspectScore * 0.10) +
+                (angleScore * 0.18) +
+                (continuityScore * 0.26)
+            ).coerceIn(0.0, 1.0)
+    }
+
+    private fun continuityScore(points: Array<Point>, frameWidth: Int, frameHeight: Int): Double {
+        val previous = smoothedCorners ?: return 0.62
+        if (previous.size != 8) return 0.62
+
+        val previousPoints = previous.chunked(2).map { Point(it[0], it[1]) }
+        val frameDiagonal = kotlin.math.hypot(frameWidth.toDouble(), frameHeight.toDouble())
+        val averageDistance =
+            points.indices.map { index -> distance(points[index], previousPoints[index]) }.average()
+        return (1.0 - (averageDistance / (frameDiagonal * 0.18))).coerceIn(0.0, 1.0)
+    }
+
+    private fun averageAngleScore(points: Array<Point>): Double {
+        return points.indices.map { index ->
+            val prev = points[(index + 3) % 4]
+            val current = points[index]
+            val next = points[(index + 1) % 4]
+            val angle = interiorAngle(prev, current, next)
+            (1.0 - (kotlin.math.abs(angle - 90.0) / 65.0)).coerceIn(0.0, 1.0)
+        }.average()
+    }
+
+    private fun interiorAngle(prev: Point, current: Point, next: Point): Double {
+        val ax = prev.x - current.x
+        val ay = prev.y - current.y
+        val bx = next.x - current.x
+        val by = next.y - current.y
+        val magA = kotlin.math.hypot(ax, ay)
+        val magB = kotlin.math.hypot(bx, by)
+        if (magA == 0.0 || magB == 0.0) return 0.0
+        val cosTheta = ((ax * bx) + (ay * by)) / (magA * magB)
+        return Math.toDegrees(kotlin.math.acos(cosTheta.coerceIn(-1.0, 1.0)))
+    }
+
+    private fun isValidQuadrilateral(
+        points: Array<Point>,
+        frameWidth: Int,
+        frameHeight: Int,
+        frameArea: Double
+    ): Boolean {
+        if (points.size != 4) return false
+        val areaRatio = polygonArea(points) / frameArea
+        if (areaRatio < 0.06 || areaRatio > 0.96) return false
+
+        val minSideLength = minOf(frameWidth, frameHeight) * 0.12
+        val sides = listOf(
+            distance(points[0], points[1]),
+            distance(points[1], points[2]),
+            distance(points[2], points[3]),
+            distance(points[3], points[0])
+        )
+        if (sides.any { it < minSideLength }) return false
+
+        val widthTop = distance(points[0], points[1])
+        val widthBottom = distance(points[3], points[2])
+        val heightLeft = distance(points[0], points[3])
+        val heightRight = distance(points[1], points[2])
+        val avgWidth = (widthTop + widthBottom) / 2.0
+        val avgHeight = (heightLeft + heightRight) / 2.0
+        if (avgWidth == 0.0 || avgHeight == 0.0) return false
+
+        val aspectRatio = avgWidth / avgHeight
+        if (aspectRatio > 4.2 || aspectRatio < 0.22) return false
+
+        if (averageAngleScore(points) < 0.34) return false
         return true
     }
 
-    private fun orderPoints(points: MatOfPoint2f): MatOfPoint2f {
-        val pts = points.toArray()
-        val sorted = pts.sortedWith(compareBy({ it.y }, { it.x }))
-        val topTwo = sorted.take(2).sortedBy { it.x }
-        val bottomTwo = sorted.takeLast(2).sortedBy { it.x }
-        return MatOfPoint2f(
-            topTwo[0], topTwo[1],
-            bottomTwo[1], bottomTwo[0]
-        )
+    private fun orderPoints(points: Array<Point>): Array<Point> {
+        val topLeft = points.minByOrNull { it.x + it.y } ?: return points
+        val bottomRight = points.maxByOrNull { it.x + it.y } ?: return points
+        val topRight = points.minByOrNull { it.y - it.x } ?: return points
+        val bottomLeft = points.maxByOrNull { it.y - it.x } ?: return points
+        return arrayOf(topLeft, topRight, bottomRight, bottomLeft)
     }
 
     fun perspectiveCorrect(bitmap: Bitmap, corners: MatOfPoint2f): Bitmap {
@@ -667,14 +812,21 @@ class ScannerEngine(
             smoothedCorners = rawCorners
             rawCorners
         } else {
-            val blended = rawCorners.indices.map { i -> prev[i] + emaAlpha * (rawCorners[i] - prev[i]) }
+            val adaptiveAlpha = when {
+                maxDelta > 90.0 -> 0.28
+                maxDelta > 45.0 -> 0.22
+                else -> emaAlpha
+            }
+            val blended = rawCorners.indices.map { i ->
+                prev[i] + adaptiveAlpha * (rawCorners[i] - prev[i])
+            }
             smoothedCorners = blended
             blended
         }
     }
 
-    private fun flattenCorners(corners: MatOfPoint2f): List<Double> =
-        corners.toArray().flatMap { listOf(it.x, it.y) }
+    private fun flattenCornerPoints(corners: Array<Point>): List<Double> =
+        corners.flatMap { listOf(it.x, it.y) }
 
     private fun deflattenCorners(flat: List<Double>): MatOfPoint2f =
         MatOfPoint2f(*flat.chunked(2).map { (x, y) -> Point(x, y) }.toTypedArray())
@@ -682,11 +834,69 @@ class ScannerEngine(
     private fun distance(p1: Point, p2: Point): Double =
         Math.sqrt(Math.pow(p2.x - p1.x, 2.0) + Math.pow(p2.y - p1.y, 2.0))
 
+    private fun polygonArea(points: Array<Point>): Double {
+        var area = 0.0
+        for (i in points.indices) {
+            val next = points[(i + 1) % points.size]
+            area += (points[i].x * next.y) - (next.x * points[i].y)
+        }
+        return kotlin.math.abs(area) / 2.0
+    }
+
     private fun limitSize(width: Int, height: Int): Pair<Int, Int> {
         val maxDim = maxOf(width, height)
         if (maxDim <= MAX_OUTPUT_SIZE) return Pair(width, height)
         val scale = MAX_OUTPUT_SIZE.toDouble() / maxDim
         return Pair((width * scale).toInt(), (height * scale).toInt())
+    }
+
+    /**
+     * Decode an image file and apply EXIF rotation so the returned Bitmap
+     * matches the visual orientation the user sees on screen.
+     */
+    private fun decodeWithExifRotation(imagePath: String): Bitmap? {
+        val bitmap = BitmapFactory.decodeFile(imagePath) ?: return null
+        val exif = ExifInterface(imagePath)
+        val orientation = exif.getAttributeInt(
+            ExifInterface.TAG_ORIENTATION,
+            ExifInterface.ORIENTATION_NORMAL
+        )
+        val rotationDegrees = when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+            else -> 0f
+        }
+        if (rotationDegrees == 0f) return bitmap
+        val matrix = Matrix().apply { postRotate(rotationDegrees) }
+        val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        bitmap.recycle()
+        return rotated
+    }
+
+    /**
+     * Get the actual display dimensions of an image file, accounting for EXIF rotation.
+     * Returns (width, height) as they would appear when displayed correctly.
+     */
+    fun getImageDimensions(imagePath: String): Pair<Int, Int> {
+        // Use BitmapFactory.Options to read dimensions without loading full bitmap
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(imagePath, options)
+        val rawWidth = options.outWidth
+        val rawHeight = options.outHeight
+        if (rawWidth <= 0 || rawHeight <= 0) return Pair(0, 0)
+
+        val exif = ExifInterface(imagePath)
+        val orientation = exif.getAttributeInt(
+            ExifInterface.TAG_ORIENTATION,
+            ExifInterface.ORIENTATION_NORMAL
+        )
+        // For 90° and 270° rotations, width and height are swapped
+        return when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90,
+            ExifInterface.ORIENTATION_ROTATE_270 -> Pair(rawHeight, rawWidth)
+            else -> Pair(rawWidth, rawHeight)
+        }
     }
 
     private fun scaleBitmapToA4(bitmap: Bitmap): Bitmap {
