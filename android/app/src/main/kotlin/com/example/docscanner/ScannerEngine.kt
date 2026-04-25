@@ -322,6 +322,7 @@ class ScannerEngine(
         var blurred: Mat? = null
         var edgeMask: Mat? = null
         var adaptiveMask: Mat? = null
+        var dilatedEdges: Mat? = null
 
         try {
             mat = Mat()
@@ -331,22 +332,31 @@ class ScannerEngine(
             blurred = Mat()
 
             Imgproc.cvtColor(mat, gray, Imgproc.COLOR_RGBA2GRAY)
-            Imgproc.GaussianBlur(gray, blurred, Size(7.0, 7.0), 0.0)
+            // Use smaller 3×3 kernel to preserve edge details
+            Imgproc.GaussianBlur(gray, blurred, Size(3.0, 3.0), 0.0)
 
-            edgeMask = buildEdgeMask(blurred)
-            adaptiveMask = buildAdaptiveMask(blurred)
+            // Apply mild dilation before edge detection to strengthen faint document edges
+            val dilateKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0))
+            dilatedEdges = Mat()
+            Imgproc.dilate(blurred, dilatedEdges, dilateKernel)
+            dilateKernel.release()
+
+            edgeMask = buildEdgeMask(dilatedEdges)
+            adaptiveMask = buildAdaptiveMask(dilatedEdges)
 
             val frameWidth = mat.width()
             val frameHeight = mat.height()
             val frameArea = frameWidth * frameHeight.toDouble()
-            val minArea = frameArea * 0.08
+            // Lower minimum area to catch smaller documents
+            val minArea = frameArea * 0.04
 
             val candidates = mutableListOf<DetectedDocument>()
             candidates += collectCandidates(edgeMask, minArea, frameWidth, frameHeight, frameArea)
             candidates += collectCandidates(adaptiveMask, minArea, frameWidth, frameHeight, frameArea)
 
+            // Lower confidence threshold for suboptimal conditions
             return candidates
-                .filter { it.confidence >= 0.35 }
+                .filter { it.confidence >= 0.22 }
                 .maxByOrNull { it.confidence }
         } catch (t: Throwable) {
             Log.e(TAG, "Edge detection failed", t)
@@ -357,13 +367,15 @@ class ScannerEngine(
             blurred?.release()
             edgeMask?.release()
             adaptiveMask?.release()
+            dilatedEdges?.release()
         }
     }
 
     private fun buildEdgeMask(blurred: Mat): Mat {
         val edges = Mat()
         val lowerThreshold = computeAdaptiveCannyThreshold(blurred)
-        val upperThreshold = lowerThreshold * 2.4
+        // Reduce ratio from 2.4 to 2.0 for better edge connectivity
+        val upperThreshold = lowerThreshold * 2.0
         Imgproc.Canny(blurred, edges, lowerThreshold, upperThreshold)
 
         // Keep gaps closed without inflating the detected page boundary.
@@ -377,14 +389,15 @@ class ScannerEngine(
 
     private fun buildAdaptiveMask(blurred: Mat): Mat {
         val adaptive = Mat()
+        // Use larger block size and lower C for better performance in varying lighting
         Imgproc.adaptiveThreshold(
             blurred,
             adaptive,
             255.0,
             Imgproc.ADAPTIVE_THRESH_GAUSSIAN_C,
             Imgproc.THRESH_BINARY,
-            41,
-            7.0
+            51,
+            5.0
         )
         Core.bitwise_not(adaptive, adaptive)
         val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0))
@@ -429,8 +442,9 @@ class ScannerEngine(
         val stdDev = stdDevMat.toArray()[0]
         meanMat.release()
         stdDevMat.release()
-        val contrastFactor = stdDev / 50.0
-        return (100.0 * contrastFactor).coerceIn(50.0, 150.0)
+        // More sensitive threshold calculation for better edge detection
+        val contrastFactor = stdDev / 40.0
+        return (80.0 * contrastFactor).coerceIn(35.0, 120.0)
     }
 
     private fun buildCandidateFromContour(
@@ -474,7 +488,8 @@ class ScannerEngine(
             if (quadArea <= 0.0) return null
 
             val fillRatio = (hullArea / quadArea).coerceIn(0.0, 1.4)
-            if (fillRatio < 0.72) return null
+            // Lower fill ratio threshold to accept slightly irregular documents
+            if (fillRatio < 0.58) return null
 
             return CandidateShape(quad = quad, contourArea = hullArea)
         } finally {
@@ -486,7 +501,8 @@ class ScannerEngine(
         val contour2f = MatOfPoint2f(*contour.toArray())
         try {
             val perimeter = Imgproc.arcLength(contour2f, true)
-            val epsilons = doubleArrayOf(0.018, 0.024, 0.032)
+            // Use finer epsilon values for more precise corner detection
+            val epsilons = doubleArrayOf(0.010, 0.015, 0.020, 0.028)
             for (epsilon in epsilons) {
                 val approx = MatOfPoint2f()
                 try {
@@ -510,7 +526,8 @@ class ScannerEngine(
             val rect = Imgproc.minAreaRect(contour2f)
             val rectArea = rect.size.width * rect.size.height
             if (rectArea <= 0.0) return null
-            if ((contourArea / rectArea) < 0.72) return null
+            // Lower fill ratio threshold to match buildCandidateShape
+            if ((contourArea / rectArea) < 0.58) return null
 
             val points = Array(4) { Point() }
             rect.points(points)
@@ -630,10 +647,12 @@ class ScannerEngine(
         frameArea: Double
     ): Boolean {
         if (points.size != 4) return false
+        // Lower area ratio threshold to detect smaller documents
         val areaRatio = polygonArea(points) / frameArea
-        if (areaRatio < 0.06 || areaRatio > 0.96) return false
+        if (areaRatio < 0.03 || areaRatio > 0.96) return false
 
-        val minSideLength = minOf(frameWidth, frameHeight) * 0.12
+        // Reduce minimum side length requirement
+        val minSideLength = minOf(frameWidth, frameHeight) * 0.08
         val sides = listOf(
             distance(points[0], points[1]),
             distance(points[1], points[2]),
@@ -654,8 +673,9 @@ class ScannerEngine(
         if (aspectRatio > 4.2 || aspectRatio < 0.22) return false
 
         val fillRatio = contourFillRatio(points)
-        if (fillRatio < 0.55) return false
-        if (averageAngleScore(points) < 0.34) return false
+        // Lower fill ratio and angle score thresholds for better detection
+        if (fillRatio < 0.45) return false
+        if (averageAngleScore(points) < 0.25) return false
         return true
     }
 
